@@ -1186,3 +1186,147 @@ audio {
   text-shadow: 0 0 12px rgba(0, 240, 255, 0.5);
 }
 
+/* --- 5-Stage AI Pipeline Tracker --- */
+.pipeline-tracker-box {
+  background: rgba(10, 16, 30, 0.85);
+  border: 1px solid rgba(56, 189, 248, 0.25);
+  border-radius: var(--radius-md);
+  padding: 14px 16px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+}
+
+.tracker-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.tracker-title {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--accent-cyan);
+}
+
+.tracker-status {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-dim);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.tracker-status.running {
+  background: rgba(0, 240, 255, 0.2);
+  color: var(--accent-cyan);
+  border-color: var(--accent-cyan);
+  box-shadow: 0 0 10px rgba(0, 240, 255, 0.4);
+  animation: pulseCyan 1.2s infinite alternate;
+}
+
+.tracker-status.done {
+  background: rgba(0, 230, 118, 0.2);
+  color: #00e676;
+  border-color: #00e676;
+  box-shadow: 0 0 10px rgba(0, 230, 118, 0.4);
+}
+
+.tracker-steps {
+  display: flex;
+  justify-content: space-between;
+  position: relative;
+}
+
+.tracker-steps::before {
+  content: '';
+  position: absolute;
+  top: 14px;
+  left: 20px;
+  right: 20px;
+  height: 2px;
+  background: rgba(255, 255, 255, 0.1);
+  z-index: 1;
+}
+
+.tracker-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  position: relative;
+  z-index: 2;
+  gap: 6px;
+  flex: 1;
+  text-align: center;
+}
+
+.step-circle {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #0d1527;
+  border: 2px solid rgba(255, 255, 255, 0.18);
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.25s ease;
+}
+
+.step-label {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.tracker-step.active .step-circle {
+  background: var(--accent-cyan);
+  color: #000;
+  border-color: #fff;
+  box-shadow: 0 0 14px rgba(0, 240, 255, 0.8);
+  transform: scale(1.15);
+  animation: pulseStep 1.0s infinite alternate;
+}
+
+.tracker-step.active .step-label {
+  color: var(--accent-cyan);
+  font-weight: 700;
+}
+
+.tracker-step.completed .step-circle {
+  background: #00e676;
+  color: #000;
+  border-color: #00e676;
+  box-shadow: 0 0 10px rgba(0, 230, 118, 0.5);
+}
+
+.tracker-step.completed .step-label {
+  color: #00e676;
+}
+
+@keyframes pulseStep {
+  0% { box-shadow: 0 0 8px rgba(0, 240, 255, 0.5); }
+  100% { box-shadow: 0 0 18px rgba(0, 240, 255, 1.0); }
+}
+
+@keyframes pulseCyan {
+  0% { opacity: 0.7; }
+  100% { opacity: 1.0; }
+}
+
+/* File Waveforms */
+.file-waveforms-container {
+  background: rgba(8, 12, 22, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-md);
+  padding: 10px;
+}
+
+

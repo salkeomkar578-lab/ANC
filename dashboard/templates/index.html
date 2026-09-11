@@ -411,6 +411,36 @@
             </div>
           </div>
 
+          <!-- 5-Stage Live AI Pipeline Tracker -->
+          <div class="pipeline-tracker-box" id="filePipelineTracker" style="margin-top:14px;">
+            <div class="tracker-header-row">
+              <span class="tracker-title">AI AUDIO RECONSTRUCTION PIPELINE</span>
+              <span class="tracker-status" id="trackerStatusBadge">STANDBY</span>
+            </div>
+            <div class="tracker-steps">
+              <div class="tracker-step" id="trackStep1">
+                <div class="step-circle">1</div>
+                <div class="step-label">Ingest &amp; Route</div>
+              </div>
+              <div class="tracker-step" id="trackStep2">
+                <div class="step-circle">2</div>
+                <div class="step-label">AI Voice ID</div>
+              </div>
+              <div class="tracker-step" id="trackStep3">
+                <div class="step-circle">3</div>
+                <div class="step-label">Noise Cancel</div>
+              </div>
+              <div class="tracker-step" id="trackStep4">
+                <div class="step-circle">4</div>
+                <div class="step-label">Formant Guard</div>
+              </div>
+              <div class="tracker-step" id="trackStep5">
+                <div class="step-circle">5</div>
+                <div class="step-label">MOS Evaluation</div>
+              </div>
+            </div>
+          </div>
+
           <!-- Dynamic Processing Progress Bar -->
           <div class="progress-container" style="margin-top:14px;">
             <div class="meter-label-row">
@@ -422,9 +452,26 @@
             </div>
           </div>
 
-          <!-- Synchronized A/B Comparison Audio Player -->
+          <!-- Synchronized A/B Comparison Audio Player & Waveforms -->
           <div id="abPlayerContainer" class="ab-player-box" style="display:none; margin-top:16px;">
-            <h4 class="ab-player-title">A/B Audio Audition</h4>
+            <div class="section-header" style="margin-bottom:8px;">
+              <h4 class="ab-player-title" style="margin:0;">A/B Audition &amp; Visual Comparison</h4>
+              <button id="fileBaToggleBtn" class="btn btn-secondary btn-sm" style="font-size:11px; padding:4px 10px;">
+                <span>⇄</span> Toggle Before / After
+              </button>
+            </div>
+
+            <!-- Interactive Before / After Waveform Comparison -->
+            <div class="file-waveforms-container" id="fileWaveformsContainer" style="margin-bottom:12px;">
+              <div class="canvas-container" style="margin-bottom:8px;">
+                <span class="canvas-label label-input">Raw Original (Speech + Ambient Noise)</span>
+                <canvas id="fileRawWaveCanvas" height="80" style="width:100%; height:80px; background:#070b14; border-radius:6px; border:1px solid rgba(255,107,107,0.3); display:block;"></canvas>
+              </div>
+              <div class="canvas-container">
+                <span class="canvas-label label-output">Enhanced Output (IGARD-Net Cleaned Voice)</span>
+                <canvas id="fileEnhWaveCanvas" height="80" style="width:100%; height:80px; background:#070b14; border-radius:6px; border:1px solid rgba(0,240,255,0.3); display:block;"></canvas>
+              </div>
+            </div>
             
             <div class="audio-player-row">
               <span class="audio-label label-raw">Original (Noisy):</span>
@@ -432,7 +479,7 @@
             </div>
             
             <div class="audio-player-row" style="margin-top:8px;">
-              <span class="audio-label label-clean">Enhanced (IGARD-Net):</span>
+              <span class="audio-label label-clean">Enhanced (Cleaned Voice):</span>
               <audio id="cleanedAudioPlayer" controls style="width:100%;"></audio>
             </div>
 

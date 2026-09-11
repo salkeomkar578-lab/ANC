@@ -164,6 +164,7 @@ class IgardNetPipeline:
             minimum_voice_gain=sp_cfg.get("minimum_voice_gain", 0.55),
             uncertain_voice_gain=sp_cfg.get("uncertain_voice_gain", 0.70),
             max_suppression_db=sp_cfg.get("max_suppression_db", 12.0),
+            noise_suppression_floor_db=sp_cfg.get("noise_suppression_floor_db", 40.0),
             enabled=sp_cfg.get("enabled", True),
         )
 
@@ -312,7 +313,7 @@ class IgardNetPipeline:
             )
 
             # Stage 7: Voice Protection Dynamics (Gentle Compressor & Limiter)
-            output_audio = self.dynamics.process(protected_speech, primary_block)
+            output_audio = self.dynamics.process(protected_speech, primary_block, speech_prob=speech_prob)
 
             # Build stage status text
             if shock_confirmed:

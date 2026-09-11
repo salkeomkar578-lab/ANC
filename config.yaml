@@ -20,6 +20,7 @@ speech_protection:
   minimum_voice_gain: 0.55
   uncertain_voice_gain: 0.70
   max_suppression_db: 12.0
+  noise_suppression_floor_db: 40.0
 
 safety_limits:
   max_suppression_db: 12.0

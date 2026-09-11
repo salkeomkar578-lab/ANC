@@ -33,24 +33,34 @@ class VoiceProtectionDynamics:
         
         self._envelope: float = 0.0
 
-    def process(self, processed_block: np.ndarray, raw_primary_block: np.ndarray) -> np.ndarray:
+    def process(
+        self,
+        processed_block: np.ndarray,
+        raw_primary_block: np.ndarray,
+        speech_prob: float = 0.0,
+    ) -> np.ndarray:
         """
-        Applies speech floor protection, compression, and peak limiting.
+        Applies speech floor protection (only when speech is active), compression,
+        and peak limiting. When speech is absent, allows full background cancellation.
         """
         n = len(processed_block)
         if n == 0:
             return processed_block
 
-        # 1. Speech Preservation Floor:
-        # If the output energy dropped too far below the raw speech energy,
-        # blend back a fraction of raw audio to preserve voice presence and prevent sudden dropouts.
-        raw_rms = float(np.sqrt(np.mean(raw_primary_block ** 2))) + 1.0e-12
-        out_rms = float(np.sqrt(np.mean(processed_block ** 2))) + 1.0e-12
-        attenuation = out_rms / raw_rms
+        # 1. Speech Preservation Floor (Active ONLY when speech is present):
+        # When speech is detected (speech_prob >= 0.20), ensure the output energy does
+        # not drop too far below raw speech energy to protect human vowels & consonants.
+        # When speech is absent, DO NOT boost background noise — let it stay cancelled!
+        if speech_prob >= 0.20:
+            raw_rms = float(np.sqrt(np.mean(raw_primary_block ** 2))) + 1.0e-12
+            out_rms = float(np.sqrt(np.mean(processed_block ** 2))) + 1.0e-12
+            attenuation = out_rms / raw_rms
 
-        if attenuation < self.gain_floor_linear:
-            boost_factor = self.gain_floor_linear / attenuation
-            protected_block = processed_block * min(boost_factor, 2.5)
+            if attenuation < self.gain_floor_linear:
+                boost_factor = self.gain_floor_linear / attenuation
+                protected_block = processed_block * min(boost_factor, 2.5)
+            else:
+                protected_block = processed_block
         else:
             protected_block = processed_block
 

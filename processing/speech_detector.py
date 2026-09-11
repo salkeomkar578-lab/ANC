@@ -122,21 +122,32 @@ class SpeechDetector:
             max_corr = np.max(lag_corr) if len(lag_corr) > 0 else 0.0
             harmonicity = float(np.clip(max_corr / norm_factor, 0.0, 1.0))
 
-        # Combine physical cues into raw speech probability
-        # Speech cues: high speech_band_ratio, low flatness, high harmonicity, positive SNR
-        cue_flatness = np.clip((0.45 - flatness) / 0.35, 0.0, 1.0)
-        cue_band = np.clip((speech_band_ratio - 0.25) / 0.45, 0.0, 1.0)
-        cue_snr = np.clip(mean_speech_snr / 4.0, 0.0, 1.0)
-        cue_harm = np.clip(harmonicity / 0.60, 0.0, 1.0)
-        cue_energy = np.clip((rms - 0.005) / 0.04, 0.0, 1.0)
+        # 6. Formant Peak Prominence (F1 / F2 peak-to-average ratio)
+        # Foreground human voice exhibits prominent formant peaks (F1, F2), whereas
+        # diffuse background noise and babble have smeared, flat spectra.
+        if np.any(self.speech_band_mask):
+            speech_bins = power[self.speech_band_mask]
+            peak_to_avg = float(np.max(speech_bins) / (np.mean(speech_bins) + 1e-10))
+            cue_formant = float(np.clip((peak_to_avg - 2.0) / 6.0, 0.0, 1.0))
+        else:
+            cue_formant = 0.0
 
-        # Weighted raw confidence
+        # Combine physical cues into raw speech probability
+        # Speech cues: high speech_band_ratio, low flatness, high harmonicity, formant prominence, positive SNR
+        cue_flatness = float(np.clip((0.45 - flatness) / 0.35, 0.0, 1.0))
+        cue_band = float(np.clip((speech_band_ratio - 0.25) / 0.45, 0.0, 1.0))
+        cue_snr = float(np.clip(mean_speech_snr / 4.0, 0.0, 1.0))
+        cue_harm = float(np.clip(harmonicity / 0.55, 0.0, 1.0))
+        cue_energy = float(np.clip((rms - 0.005) / 0.04, 0.0, 1.0))
+
+        # Weighted raw confidence (AI multi-cue voice detection)
         p_raw = (
-            0.25 * cue_band +
-            0.25 * cue_flatness +
-            0.20 * cue_snr +
-            0.15 * cue_harm +
-            0.15 * cue_energy
+            0.20 * cue_band +
+            0.20 * cue_flatness +
+            0.20 * cue_harm +
+            0.15 * cue_formant +
+            0.15 * cue_snr +
+            0.10 * cue_energy
         )
         p_raw = float(np.clip(p_raw, 0.0, 1.0))
 

@@ -172,6 +172,10 @@
         handleTelemetryUpdate(data);
       });
 
+      socket.on('file_progress', (data) => {
+        handleFileProgress(data);
+      });
+
       socket.on('file_completed', (res) => {
         handleFileCompleted(res);
       });
@@ -179,6 +183,11 @@
       socket.on('file_error', (err) => {
         const s = document.getElementById('fileStatusText');
         if (s) s.textContent = `Error: ${err.message}`;
+        const trackerBadge = document.getElementById('trackerStatusBadge');
+        if (trackerBadge) {
+          trackerBadge.textContent = 'ERROR';
+          trackerBadge.className = 'tracker-status';
+        }
       });
     } else {
       setInterval(pollStatusHTTP, 200);
@@ -902,6 +911,75 @@
     }
   }
 
+  // --- File Progress & Pipeline Stage Tracker ---
+  function handleFileProgress(data) {
+    if (!data) return;
+    const pBar = document.getElementById('fileProgressBar');
+    const pText = document.getElementById('fileProgressText');
+    const sText = document.getElementById('fileStatusText');
+    const trackerBadge = document.getElementById('trackerStatusBadge');
+
+    if (pBar && data.progress !== undefined) pBar.style.width = `${data.progress}%`;
+    if (pText && data.progress !== undefined) pText.textContent = `${data.progress.toFixed(0)}%`;
+    if (sText && data.stage) sText.textContent = data.stage;
+
+    if (trackerBadge) {
+      trackerBadge.textContent = 'PROCESSING...';
+      trackerBadge.className = 'tracker-status running';
+    }
+
+    const currentStage = data.stage_idx || 1;
+    for (let s = 1; s <= 5; s++) {
+      const stepEl = document.getElementById(`trackStep${s}`);
+      if (stepEl) {
+        stepEl.classList.remove('active', 'completed');
+        if (s < currentStage) {
+          stepEl.classList.add('completed');
+        } else if (s === currentStage) {
+          stepEl.classList.add('active');
+        }
+      }
+    }
+  }
+
+  function renderStaticWaveform(canvasId, samples, strokeColor, glowColor) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas || !Array.isArray(samples) || samples.length === 0) return;
+    canvas.width = canvas.clientWidth || 400;
+    canvas.height = canvas.clientHeight || 80;
+    const ctx = canvas.getContext('2d');
+    const width = canvas.width;
+    const height = canvas.height;
+    ctx.clearRect(0, 0, width, height);
+
+    // Center reference line
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(0, height / 2);
+    ctx.lineTo(width, height / 2);
+    ctx.stroke();
+
+    // Waveform line
+    ctx.strokeStyle = strokeColor;
+    ctx.lineWidth = 1.6;
+    ctx.shadowBlur = 5;
+    ctx.shadowColor = glowColor;
+
+    ctx.beginPath();
+    const sliceWidth = width / samples.length;
+    let x = 0;
+    for (let i = 0; i < samples.length; i++) {
+      const v = samples[i];
+      const y = (0.5 - v * 0.45) * height;
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+      x += sliceWidth;
+    }
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+  }
+
   function handleFileCompleted(res) {
     const statusText = document.getElementById('fileStatusText');
     if (statusText) {
@@ -912,6 +990,20 @@
     const pText = document.getElementById('fileProgressText');
     if (pBar) pBar.style.width = '100%';
     if (pText) pText.textContent = '100%';
+
+    // Mark all 5 pipeline stages as completed
+    const trackerBadge = document.getElementById('trackerStatusBadge');
+    if (trackerBadge) {
+      trackerBadge.textContent = 'COMPLETE (QUALITY VERIFIED)';
+      trackerBadge.className = 'tracker-status done';
+    }
+    for (let s = 1; s <= 5; s++) {
+      const stepEl = document.getElementById(`trackStep${s}`);
+      if (stepEl) {
+        stepEl.classList.remove('active');
+        stepEl.classList.add('completed');
+      }
+    }
 
     // Populate Objective MOS & Quality Benchmark Results
     const mosScoreEl = document.getElementById('fileMosScore');
@@ -964,11 +1056,12 @@
       artEl.textContent = '0 Faults';
     }
 
-    // Setup A/B Audio Player
+    // Setup A/B Audio Player & Visual Waveforms
     const playerContainer = document.getElementById('abPlayerContainer');
     const rawPlayer = document.getElementById('rawAudioPlayer');
     const cleanPlayer = document.getElementById('cleanedAudioPlayer');
     const dlBtn = document.getElementById('downloadEnhancedBtn');
+    const baToggleBtn = document.getElementById('fileBaToggleBtn');
 
     if (playerContainer) playerContainer.style.display = 'block';
     if (rawPlayer) {
@@ -981,6 +1074,44 @@
     }
     if (dlBtn) {
       dlBtn.href = `/api/audio/download/${res.output_file}`;
+    }
+
+    // Render Static Before / After Waveforms
+    setTimeout(() => {
+      if (Array.isArray(res.raw_waveform)) {
+        renderStaticWaveform('fileRawWaveCanvas', res.raw_waveform, '#ff6b6b', 'rgba(255, 107, 107, 0.4)');
+      }
+      if (Array.isArray(res.enhanced_waveform)) {
+        renderStaticWaveform('fileEnhWaveCanvas', res.enhanced_waveform, '#00f0ff', 'rgba(0, 240, 255, 0.5)');
+      }
+    }, 60);
+
+    // Interactive File A/B Toggle Button
+    if (baToggleBtn && rawPlayer && cleanPlayer) {
+      let fileAuditionMode = 'clean';
+      baToggleBtn.onclick = () => {
+        if (fileAuditionMode === 'clean') {
+          const t = cleanPlayer.currentTime;
+          const wasPlaying = !cleanPlayer.paused;
+          cleanPlayer.pause();
+          rawPlayer.currentTime = t;
+          if (wasPlaying) rawPlayer.play();
+          fileAuditionMode = 'raw';
+          baToggleBtn.innerHTML = '<span>⇄</span> Audition: <strong>BEFORE (Raw)</strong>';
+          baToggleBtn.style.color = '#ff6b6b';
+          baToggleBtn.style.borderColor = '#ff6b6b';
+        } else {
+          const t = rawPlayer.currentTime;
+          const wasPlaying = !rawPlayer.paused;
+          rawPlayer.pause();
+          cleanPlayer.currentTime = t;
+          if (wasPlaying) cleanPlayer.play();
+          fileAuditionMode = 'clean';
+          baToggleBtn.innerHTML = '<span>⇄</span> Audition: <strong>AFTER (Cleaned)</strong>';
+          baToggleBtn.style.color = '#00f0ff';
+          baToggleBtn.style.borderColor = '#00f0ff';
+        }
+      };
     }
   }
 

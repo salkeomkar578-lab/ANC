@@ -208,11 +208,23 @@ def api_process_file():
         state.mode = "file"
         state.file_status = "Processing..."
         state.file_progress = 0.0
+
+        def on_file_prog(prog: float, stage_msg: str = "Processing...", stage_idx: int = 1):
+            state.file_progress = prog
+            state.file_status = stage_msg
+            socketio.emit("file_progress", {
+                "progress": round(prog, 1),
+                "stage": stage_msg,
+                "stage_idx": stage_idx,
+                "filename": target_path.name,
+            })
+
         try:
             res = file_processor.process_file(
                 filepath=target_path,
                 pipeline=pipeline,
                 state=state,
+                progress_callback=on_file_prog,
             )
             socketio.emit("file_completed", res)
         except Exception as e:

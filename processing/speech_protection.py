@@ -20,6 +20,7 @@ class SpeechProtectionGate:
         minimum_voice_gain: float = 0.55,
         uncertain_voice_gain: float = 0.70,
         max_suppression_db: float = 12.0,
+        noise_suppression_floor_db: float = 40.0,
         enabled: bool = True,
     ):
         self.sample_rate = sample_rate
@@ -28,6 +29,7 @@ class SpeechProtectionGate:
         self.min_voice_gain = minimum_voice_gain
         self.uncertain_voice_gain = uncertain_voice_gain
         self.max_suppression_linear = 10.0 ** (-max_suppression_db / 20.0)
+        self.noise_floor_linear = 10.0 ** (-noise_suppression_floor_db / 20.0) # ~0.01 (-40 dB)
         self.enabled = enabled
 
         # Gain smoother dedicated to protection blend
@@ -37,7 +39,7 @@ class SpeechProtectionGate:
             attack_ms=10.0,
             release_ms=60.0,
             max_delta_per_frame=0.08,
-            min_gain=self.max_suppression_linear,
+            min_gain=self.noise_floor_linear,
         )
 
         # Compressor / limiter parameters
@@ -57,7 +59,9 @@ class SpeechProtectionGate:
         noise_probability: float,
     ) -> Tuple[np.ndarray, float]:
         """
-        Enforces speech preservation and prevents excessive voice attenuation.
+        Enforces speech preservation and prevents excessive voice attenuation,
+        while allowing deep cancellation of background noise and chatter when
+        human speech is absent.
         Returns:
             protected_frame: 1D numpy array
             applied_gain: float effective gain applied to speech
@@ -75,24 +79,23 @@ class SpeechProtectionGate:
         clean_rms = float(np.sqrt(np.mean(clean ** 2))) + 1e-10
         current_attenuation = clean_rms / raw_rms
 
-        # Determine target speech preservation gain floor based on speech probability
+        # Target preservation gain floor based on speech probability:
         if speech_probability >= self.prob_thresh:
-            # Confident speech: strict protection floor
+            # Confident speech: strict voice preservation floor (never drops below 0.55)
             target_floor = self.min_voice_gain
-        elif speech_probability > 0.25:
-            # Uncertain / transitional speech: conservative protection
-            # Interpolate smoothly between uncertain_voice_gain and min_voice_gain
-            blend = (speech_probability - 0.25) / (self.prob_thresh - 0.25)
+        elif speech_probability > 0.20:
+            # Transitional / soft syllable speech: smoothly blend between uncertain voice gain and min voice gain
+            blend = (speech_probability - 0.20) / (self.prob_thresh - 0.20)
             target_floor = (1.0 - blend) * self.uncertain_voice_gain + blend * self.min_voice_gain
         else:
-            # Low speech probability (predominantly noise)
-            # Bound suppression by max_suppression_linear (never hard mute to 0)
-            target_floor = self.max_suppression_linear
+            # Background noise / background chatter without target speech:
+            # Allow aggressive background cancellation down to noise_floor_linear (-40 dB),
+            # smoothly scaling up only as speech probability approaches 0.20.
+            blend = max(0.0, speech_probability / 0.20)
+            target_floor = (1.0 - blend) * self.noise_floor_linear + blend * self.uncertain_voice_gain
 
         # If clean_rms has dropped below target floor, compute blend factor
         if current_attenuation < target_floor:
-            # Required output energy should match target_floor * raw_rms
-            # We mix cleaned with raw to restore speech naturally
             deficit = target_floor - current_attenuation
             mix_raw = float(np.clip(deficit / max(1e-6, 1.0 - current_attenuation), 0.0, 0.85))
             blended = (1.0 - mix_raw) * clean + mix_raw * raw
@@ -103,8 +106,10 @@ class SpeechProtectionGate:
         blended_rms = float(np.sqrt(np.mean(blended ** 2))) + 1e-10
         eff_gain = blended_rms / raw_rms
         smooth_gain = self.smoother.smooth_scalar(eff_gain)
-        # Strictly enforce target speech preservation floor
-        smooth_gain = max(target_floor, smooth_gain)
+        
+        # Strictly enforce target speech preservation floor when speech is active
+        if speech_probability >= 0.20:
+            smooth_gain = max(target_floor, smooth_gain)
 
         gain_correction = smooth_gain / eff_gain
         out = blended * gain_correction
@@ -115,3 +120,4 @@ class SpeechProtectionGate:
             out = out * (0.95 / peak)
 
         return out, smooth_gain
+
