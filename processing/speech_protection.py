@@ -8,7 +8,7 @@ natural speech continuity, vowel formants, and syllable endings.
 
 from typing import Tuple, Optional
 import numpy as np
-from gain_smoother import GainSmoother
+from processing.gain_smoother import GainSmoother
 
 
 class SpeechProtectionGate:

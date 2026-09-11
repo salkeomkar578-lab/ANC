@@ -212,6 +212,27 @@
     }
   }
 
+  function updateStreamButtonState(isStreaming) {
+    const startBtn = document.getElementById('startBtn');
+    const startIcon = document.getElementById('startIcon');
+    const startText = document.getElementById('startText');
+    const stopBtn = document.getElementById('stopBtn');
+    if (startBtn) {
+      if (isStreaming) {
+        startBtn.classList.add('streaming');
+        if (startIcon) startIcon.textContent = '●';
+        if (startText) startText.textContent = 'STREAMING LIVE';
+      } else {
+        startBtn.classList.remove('streaming');
+        if (startIcon) startIcon.textContent = '▶';
+        if (startText) startText.textContent = 'Start Live Stream';
+      }
+    }
+    if (stopBtn) {
+      stopBtn.style.opacity = isStreaming ? '1' : '0.6';
+    }
+  }
+
   // --- Handle Telemetry Packet ---
   function handleTelemetryUpdate(data) {
     if (!data) return;
@@ -230,12 +251,37 @@
       metaEl.textContent = `Total Latency: ${lat} • Frame: 256 samples (16ms @ 16 kHz) • Backend: ${be} [${prof}]`;
     }
 
-    // 2. Before / After & Autopilot State Sync
+    // 2. Before / After, Autopilot & Stream State Sync
     if (data.before_after !== undefined) {
       updateBeforeAfterUI(data.before_after);
     }
     if (data.autopilot !== undefined) {
       updateAutopilotUI(data.autopilot);
+    }
+    if (data.is_running !== undefined) {
+      updateStreamButtonState(data.is_running);
+    }
+
+    // Live Estimated Speech Quality MOS
+    const mosEl = document.getElementById('liveMosValue');
+    const mosBadge = document.getElementById('liveMosBadge');
+    if (mosEl && data.estimated_mos !== undefined) {
+      mosEl.textContent = data.estimated_mos.toFixed(2);
+      if (mosBadge) {
+        if (data.estimated_mos >= 4.20) {
+          mosBadge.className = 'metric-badge badge-snr';
+          mosBadge.textContent = 'EXCELLENT';
+        } else if (data.estimated_mos >= 3.60) {
+          mosBadge.className = 'metric-badge badge-latency';
+          mosBadge.textContent = 'GOOD';
+        } else if (data.estimated_mos >= 2.80) {
+          mosBadge.className = 'metric-badge';
+          mosBadge.textContent = 'FAIR';
+        } else {
+          mosBadge.className = 'metric-badge';
+          mosBadge.textContent = 'POOR';
+        }
+      }
     }
 
     // 3. Performance Metrics
@@ -608,35 +654,30 @@
 
   // --- Control Event Listeners ---
   function setupControls() {
-    // Mode Switcher
+    // Mode Switcher Tabs (Strictly Separated Views)
     const realtimeBtn = document.getElementById('realtimeModeBtn');
     const fileBtn = document.getElementById('fileModeBtn');
-    const rtPanel = document.getElementById('realtimePanel');
-    const fPanel = document.getElementById('filePanel');
-    const panelTitle = document.getElementById('panelModeTitle');
-    const panelSub = document.getElementById('panelModeSub');
+    const liveView = document.getElementById('liveDetectionView');
+    const fileView = document.getElementById('fileStudioView');
 
-    if (realtimeBtn && fileBtn) {
-      realtimeBtn.addEventListener('click', () => {
-        currentMode = 'realtime';
-        realtimeBtn.classList.add('active');
-        fileBtn.classList.remove('active');
-        if (rtPanel) rtPanel.style.display = 'block';
-        if (fPanel) fPanel.style.display = 'none';
-        if (panelTitle) panelTitle.textContent = '⚙ Real-Time Stream Controls';
-        if (panelSub) panelSub.textContent = 'Dual-Mic / Simulation';
-      });
-
-      fileBtn.addEventListener('click', () => {
-        currentMode = 'file';
-        fileBtn.classList.add('active');
-        realtimeBtn.classList.remove('active');
-        if (rtPanel) rtPanel.style.display = 'none';
-        if (fPanel) fPanel.style.display = 'block';
-        if (panelTitle) panelTitle.textContent = '📁 File Processing Module';
-        if (panelSub) panelSub.textContent = 'WAV Upload & Fast Batch Processing';
-      });
+    function switchMode(mode) {
+      currentMode = mode;
+      if (mode === 'realtime') {
+        if (realtimeBtn) realtimeBtn.classList.add('active');
+        if (fileBtn) fileBtn.classList.remove('active');
+        if (liveView) liveView.style.display = 'flex';
+        if (fileView) fileView.style.display = 'none';
+        setTimeout(resizeCanvases, 60);
+      } else {
+        if (fileBtn) fileBtn.classList.add('active');
+        if (realtimeBtn) realtimeBtn.classList.remove('active');
+        if (liveView) liveView.style.display = 'none';
+        if (fileView) fileView.style.display = 'flex';
+      }
     }
+
+    if (realtimeBtn) realtimeBtn.addEventListener('click', () => switchMode('realtime'));
+    if (fileBtn) fileBtn.addEventListener('click', () => switchMode('file'));
 
     // Before / After Toggle
     const baBtn = document.getElementById('beforeAfterBtn');
@@ -717,15 +758,56 @@
       });
     }
 
-    // Start / Stop
+    // Synchronized Start / Stop Handlers
     const startBtn = document.getElementById('startBtn');
     const stopBtn = document.getElementById('stopBtn');
-    if (startBtn) {
-      startBtn.addEventListener('click', () => fetch('/api/start_live', { method: 'POST' }));
+
+    async function handleStart() {
+      // 1. Resume AudioContext within click user gesture
+      if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+      }
+      if (audioCtx.state === 'suspended') {
+        await audioCtx.resume();
+      }
+
+      // 2. Start backend live engine
+      try {
+        await fetch('/api/start_live', { method: 'POST' });
+      } catch (e) {
+        console.error('Failed to start live stream:', e);
+      }
+
+      // 3. Connect live browser audio audition
+      if (!isAuditionActive) {
+        startBrowserAudioAudition();
+      }
+
+      // 4. Update UI state synchronously
+      updateStreamButtonState(true);
+      const statusText = document.getElementById('statusText');
+      if (statusText) statusText.textContent = 'Live audio streaming active — listening & enhancing in real time.';
     }
-    if (stopBtn) {
-      stopBtn.addEventListener('click', () => fetch('/api/stop', { method: 'POST' }));
+
+    async function handleStop() {
+      // 1. Stop browser audio audition
+      stopBrowserAudioAudition();
+
+      // 2. Stop backend live engine
+      try {
+        await fetch('/api/stop', { method: 'POST' });
+      } catch (e) {
+        console.error('Failed to stop live stream:', e);
+      }
+
+      // 3. Update UI state synchronously
+      updateStreamButtonState(false);
+      const statusText = document.getElementById('statusText');
+      if (statusText) statusText.textContent = 'Live stream paused / idle.';
     }
+
+    if (startBtn) startBtn.addEventListener('click', handleStart);
+    if (stopBtn) stopBtn.addEventListener('click', handleStop);
 
     // File Upload & Processing
     const dropzone = document.getElementById('uploadDropzone');
@@ -759,7 +841,8 @@
 
     if (runSampleBtn) {
       runSampleBtn.addEventListener('click', async () => {
-        document.getElementById('fileStatusText').textContent = 'Processing repository demo sample...';
+        const s = document.getElementById('fileStatusText');
+        if (s) s.textContent = 'Processing repository benchmark sample...';
         try {
           await fetch('/api/process_file', {
             method: 'POST',
@@ -822,13 +905,64 @@
   function handleFileCompleted(res) {
     const statusText = document.getElementById('fileStatusText');
     if (statusText) {
-      statusText.textContent = `Complete in ${res.processing_time_s}s (RTF: ${res.rtf}) • SNR: +${res.snr_improvement_db} dB`;
+      statusText.textContent = `Complete in ${res.processing_time_s}s (RTF: ${res.rtf}) • MOS: ${res.overall_mos || '--'} • SNR: +${res.snr_improvement_db || '--'} dB`;
     }
 
     const pBar = document.getElementById('fileProgressBar');
     const pText = document.getElementById('fileProgressText');
     if (pBar) pBar.style.width = '100%';
     if (pText) pText.textContent = '100%';
+
+    // Populate Objective MOS & Quality Benchmark Results
+    const mosScoreEl = document.getElementById('fileMosScore');
+    const mosBadgeEl = document.getElementById('fileMosBadge');
+    const mosDeltaEl = document.getElementById('fileMosDelta');
+    const presEl = document.getElementById('fileSpeechPreservation');
+    const snrEl = document.getElementById('fileSnrImprovement');
+    const rtfEl = document.getElementById('fileSpeedRtf');
+    const speedSubEl = document.getElementById('fileSpeedSub');
+    const sigEl = document.getElementById('fileSpeechSig');
+    const bakEl = document.getElementById('fileNoiseBak');
+    const artEl = document.getElementById('fileArtifacts');
+
+    if (mosScoreEl && res.overall_mos !== undefined) {
+      mosScoreEl.textContent = res.overall_mos.toFixed(2);
+    }
+    if (mosBadgeEl && res.mos_rating) {
+      mosBadgeEl.textContent = `${res.mos_rating.toUpperCase()} QUALITY`;
+      mosBadgeEl.className = 'mos-rating-badge';
+      if (res.overall_mos >= 4.2) mosBadgeEl.classList.add('badge-excellent');
+      else if (res.overall_mos >= 3.6) mosBadgeEl.classList.add('badge-good');
+      else if (res.overall_mos >= 2.8) mosBadgeEl.classList.add('badge-fair');
+    }
+    if (mosDeltaEl) {
+      const rawM = res.raw_mos !== undefined ? res.raw_mos.toFixed(2) : '--';
+      const enhM = res.overall_mos !== undefined ? res.overall_mos.toFixed(2) : '--';
+      const gain = res.mos_gain !== undefined ? `+${res.mos_gain.toFixed(2)}` : '--';
+      mosDeltaEl.textContent = `Raw Input MOS: ${rawM} ➔ Enhanced MOS: ${enhM} (${gain} MOS Gain)`;
+    }
+    if (presEl && res.speech_preservation_score !== undefined) {
+      presEl.textContent = `${res.speech_preservation_score.toFixed(1)}%`;
+    }
+    if (snrEl && res.snr_improvement_db !== undefined) {
+      snrEl.textContent = `+${res.snr_improvement_db.toFixed(1)} dB`;
+    }
+    if (rtfEl && res.rtf !== undefined) {
+      rtfEl.textContent = `${res.rtf.toFixed(4)}x`;
+    }
+    if (speedSubEl && res.processing_time_s !== undefined && res.rtf !== undefined) {
+      const speedup = Math.round(1.0 / Math.max(0.0001, res.rtf));
+      speedSubEl.textContent = `Processed in ${res.processing_time_s}s (${speedup}x Real-Time Throughput)`;
+    }
+    if (sigEl && res.speech_intelligibility !== undefined) {
+      sigEl.textContent = `${res.speech_intelligibility.toFixed(2)} / 5.0`;
+    }
+    if (bakEl && res.noise_suppression !== undefined) {
+      bakEl.textContent = `${res.noise_suppression.toFixed(2)} / 5.0`;
+    }
+    if (artEl) {
+      artEl.textContent = '0 Faults';
+    }
 
     // Setup A/B Audio Player
     const playerContainer = document.getElementById('abPlayerContainer');

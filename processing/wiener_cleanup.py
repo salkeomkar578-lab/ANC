@@ -9,7 +9,7 @@ from typing import Optional
 import numpy as np
 from backends.base import ComputeBackend
 from backends.cpu_backend import CPUBackend
-from gain_smoother import GainSmoother
+from processing.gain_smoother import GainSmoother
 
 
 class ResidualCleanup:

@@ -36,6 +36,9 @@ class SystemState:
         self.output_rms: float = 0.0
         self.snr_delta: float = 0.0
         self.snr_ema: float = 0.0
+        self.estimated_mos: float = 4.20
+        self.speech_prob: float = 0.0
+        self.noise_prob: float = 0.0
         
         # Latency & Throughput Metrics (Real measured values)
         self.latency_capture_ms: float = 0.0
@@ -125,6 +128,9 @@ class SystemState:
                 "output_rms": round(self.output_rms, 3),
                 "snr_delta": round(self.snr_delta, 2),
                 "snr_ema": round(self.snr_ema, 2),
+                "estimated_mos": round(self.estimated_mos, 2),
+                "speech_prob": round(self.speech_prob, 3),
+                "noise_prob": round(self.noise_prob, 3),
                 "latency_capture_ms": round(self.latency_capture_ms, 2),
                 "latency_process_ms": round(self.latency_process_ms, 2),
                 "latency_queue_ms": round(self.latency_queue_ms, 2),

@@ -46,8 +46,9 @@ from processing.wiener_cleanup import ResidualCleanup
 from processing.dynamics import VoiceProtectionDynamics
 from sensors.accelerometer import AccelerometerBase, cross_check_confidence
 from sensors.mock_sensor import MockAccelerometer
-from speech_detector import SpeechDetector
-from speech_protection import SpeechProtectionGate
+from processing.speech_detector import SpeechDetector
+from processing.speech_protection import SpeechProtectionGate
+from processing.mos_estimator import MOSEstimator
 
 
 class IgardNetPipeline:
@@ -177,6 +178,9 @@ class IgardNetPipeline:
             release_ms=vp_cfg.get("release_ms", 100.0),
             makeup_gain_db=vp_cfg.get("makeup_gain_db", 0.0),
         )
+
+        # Objective MOS Quality Estimator
+        self.mos_estimator = MOSEstimator(sample_rate=self.sample_rate)
 
         # Rolling history buffers for snapshot extraction
         self._history_len = gqpso_cfg.get("history_samples", 1024)
@@ -349,6 +353,17 @@ class IgardNetPipeline:
         self.state.noise_confidence = float(confidence)
         self.state.shock_confidence = float(shock_score)
         self.state.current_stage = active_stage
+        self.state.speech_prob = float(speech_prob)
+        self.state.noise_prob = float(noise_prob)
+
+        # Objective frame MOS calculation
+        estimated_mos = self.mos_estimator.estimate_frame_mos(
+            primary_block=primary_block,
+            enhanced_block=output_audio,
+            speech_prob=float(speech_prob),
+            snr_delta=float(self._snr_ema),
+        )
+        self.state.estimated_mos = float(estimated_mos)
 
         self._block_count += 1
         self.state.frames_processed = self._block_count
@@ -360,6 +375,7 @@ class IgardNetPipeline:
             "enhanced_audio": output_audio,
             "speech_prob": float(speech_prob),
             "noise_prob": float(noise_prob),
+            "estimated_mos": float(estimated_mos),
             "noise_label": noise_label,
             "confidence": float(confidence),
             "shock_score": float(shock_score),

@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>IGARD-Net &mdash; Tactical Low-Latency Audio AI & Telemetry</title>
-  <meta name="description" content="Tactical edge audio noise cancellation and speech enhancement system with sub-50ms latency, CUDA acceleration, and cross-modal shock verification.">
+  <meta name="description" content="Tactical edge audio noise cancellation and speech enhancement system with sub-20ms latency, CUDA acceleration, and ITU-T MOS speech evaluation.">
 
   <!-- Google Fonts: Inter & JetBrains Mono -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -21,29 +21,38 @@
 
   <div class="dashboard-container">
 
-    <!-- 1. Header Bar with Mode Toggle and Recalibrate Action -->
+    <!-- Top Navigation Header -->
     <header class="header-bar">
       <div class="brand-section">
         <span class="badge-defense">TACTICAL AUDIO AI</span>
         <div class="header-title">
-          <h1>IGARD-Net Low-Latency Telemetry</h1>
-          <p id="backendProfileText">NVIDIA CUDA / CPU Auto-Engine &bull; Sub-50ms Edge Streaming</p>
+          <h1>IGARD-Net Telemetry &amp; Studio</h1>
+          <p id="backendProfileText">NVIDIA CUDA / CPU Auto-Engine &bull; Sub-20ms Edge Streaming</p>
         </div>
       </div>
 
-      <div class="header-controls">
-        <!-- Dual Mode Switcher -->
-        <div class="mode-toggle">
-          <button id="realtimeModeBtn" class="mode-btn active" title="Low-latency continuous audio streaming">
-            <span>●</span> Real-Time Mode
-          </button>
-          <button id="fileModeBtn" class="mode-btn" title="High-throughput recorded WAV processing (RTF &lt; 0.2)">
-            <span>📁</span> File Mode
-          </button>
-        </div>
+      <!-- Mode Switcher Tabs -->
+      <div class="mode-nav-tabs">
+        <button id="realtimeModeBtn" class="mode-tab-btn active" title="Live audio stream, speech detection, and oscilloscopes">
+          <span class="live-dot-indicator"></span> 🔴 Live Detection Mode
+        </button>
+        <button id="fileModeBtn" class="mode-tab-btn" title="Recorded audio enhancement studio with objective MOS evaluation">
+          <span>📁</span> Recorded File Studio
+        </button>
+      </div>
 
-        <!-- Prominent Before / After Toggle Button -->
-        <button id="beforeAfterBtn" class="btn btn-ba active" title="Toggle between Raw Input and Enhanced IGARD-Net Audio">
+      <!-- Global Stream Controls -->
+      <div class="header-controls">
+        <!-- Prominent Synchronized Start Button -->
+        <button id="startBtn" class="btn btn-start" title="Start live audio capture and browser audition">
+          <span id="startIcon">▶</span> <span id="startText">Start Live Stream</span>
+        </button>
+        <button id="stopBtn" class="btn btn-danger" title="Pause live audio stream and audio audition">
+          <span>⏹</span> Stop
+        </button>
+
+        <!-- Before / After Toggle Button -->
+        <button id="beforeAfterBtn" class="btn btn-ba active" title="Toggle between Raw Microphone and Enhanced Voice">
           <span class="ba-indicator">●</span> <strong id="baLabel">AFTER (Enhanced)</strong>
         </button>
 
@@ -53,327 +62,357 @@
         </button>
 
         <!-- Recalibrate Quiet Baseline Button -->
-        <button id="recalibrateBtn" class="btn btn-secondary" title="Reset quiet noise floor baseline during momentary lulls">
-          <span>⚡</span> Recalibrate Baseline
+        <button id="recalibrateBtn" class="btn btn-secondary" title="Reset quiet noise floor baseline">
+          <span>⚡</span> Recalibrate
         </button>
 
-        <!-- Live Browser Audio Audition (Listen directly in browser) -->
-        <button id="audioAuditionBtn" class="btn btn-audio" title="Listen to real-time processed audio stream in browser">
+        <!-- Live Browser Audio Audition -->
+        <button id="audioAuditionBtn" class="btn btn-audio" title="Mute or listen directly in browser">
           <span id="audioAuditionIcon">🔊</span> <span id="audioAuditionText">Browser Audio: ON</span>
-        </button>
-
-        <!-- Stream Action Buttons -->
-        <button id="startBtn" class="btn btn-primary" title="Start audio streaming">
-          <span>▶</span> Start
-        </button>
-        <button id="stopBtn" class="btn btn-danger" title="Halt current processing">
-          <span>⏹</span> Stop
         </button>
       </div>
     </header>
 
-    <!-- 2. Dynamic Processing Status Banner -->
-    <section class="status-banner" id="statusBanner">
-      <div class="status-content">
-        <div class="status-dot pulse" id="statusDot"></div>
-        <div class="status-text" id="statusText">System initialized &mdash; Real-time tactical stream running.</div>
-      </div>
-      <div class="status-meta" id="statusMeta">
-        Latency: -- ms &bull; Frame: 256 samples @ 16 kHz &bull; Backend: Initializing...
-      </div>
-    </section>
 
-    <!-- 3. Pipeline Signal Chain Flow Diagram -->
-    <section class="pipeline-section">
-      <div class="section-header">
-        <div class="section-title">
-          <span>◆</span> Pipeline Signal Chain Architecture &bull; Dynamic Stage Activation
+    <!-- ================================================================= -->
+    <!-- VIEW 1: 🔴 LIVE REAL-TIME DETECTION & STREAMING WORKSPACE         -->
+    <!-- ================================================================= -->
+    <main id="liveDetectionView" class="view-workspace active">
+
+      <!-- Dynamic Processing Status Banner -->
+      <section class="status-banner" id="statusBanner">
+        <div class="status-content">
+          <div class="status-dot pulse" id="statusDot"></div>
+          <div class="status-text" id="statusText">System initialized &mdash; Real-time tactical stream running.</div>
         </div>
-        <span class="metric-sub">Presence Gate &bull; Acoustic Classifier &bull; Cross-Modal Shock &bull; 64-Tap NLMS &bull; Async GQPSO &bull; OLA Wiener &bull; Dynamics</span>
-      </div>
-
-      <div class="pipeline-diagram">
-        <!-- Stage 0: Presence Gate -->
-        <div class="pipeline-stage active" id="stage0">
-          <div class="stage-num">[Stage 0] Presence Gate</div>
-          <div class="stage-name">Energy Baseline</div>
-          <div class="stage-desc">Bypasses pipeline during quiet periods; preserves speech purity.</div>
-          <div class="stage-badge" id="stage0Badge">CHECKING FLOOR</div>
+        <div class="status-meta" id="statusMeta">
+          Latency: -- ms &bull; Frame: 256 samples @ 16 kHz &bull; Backend: Initializing...
         </div>
+      </section>
 
-        <!-- Stage 1: Noise Classifier -->
-        <div class="pipeline-stage" id="stage1">
-          <div class="stage-num">[Stage 1] Classifier</div>
-          <div class="stage-name">Spectral Analysis</div>
-          <div class="stage-desc">8-feature DSP analysis: rolloff, peakiness, crest factor, onset.</div>
-          <div class="stage-badge" id="stage1Badge">STANDBY</div>
-        </div>
-
-        <!-- Stage 1b: Accelerometer Cross-Check -->
-        <div class="pipeline-stage" id="stage1b">
-          <div class="stage-num">[Stage 1b] Cross-Modal</div>
-          <div class="stage-name">Shock Sensor</div>
-          <div class="stage-desc">Confirms mechanical shock to suppress false acoustic gunshots.</div>
-          <div class="stage-badge" id="stage1bBadge">SCORE: 2%</div>
-        </div>
-
-        <!-- Stage 2: NLMS Adaptive Filter -->
-        <div class="pipeline-stage" id="stage2">
-          <div class="stage-num">[Stage 2] NLMS Filter</div>
-          <div class="stage-name">Adaptive Canceller</div>
-          <div class="stage-desc">64-tap normalized LMS FIR filter with leakage.</div>
-          <div class="stage-badge" id="stage2Badge">&mu; = 0.2500</div>
-        </div>
-
-        <!-- Stage 3: Quantum Tuner -->
-        <div class="pipeline-stage" id="stage3">
-          <div class="stage-num">[Stage 3] GQPSO Tuner</div>
-          <div class="stage-name">Quantum Auto-Tuner</div>
-          <div class="stage-desc">Async background swarm optimizes &mu; without stalling audio.</div>
-          <div class="stage-badge" id="stage3Badge">ASYNC RUNNING</div>
-        </div>
-
-        <!-- Stage 4 & 5: Confidence Gate & Wiener Cleanup -->
-        <div class="pipeline-stage" id="stage4">
-          <div class="stage-num">[Stage 4/5] Safety & Cleanup</div>
-          <div class="stage-name">OLA Wiener Masking</div>
-          <div class="stage-desc">50% overlap-add spectral soft masking with fail-safe bypass.</div>
-          <div class="stage-badge" id="stage5Badge">WIENER ON</div>
-        </div>
-
-        <!-- Stage 6: Speech Protection Gate & Dynamics -->
-        <div class="pipeline-stage" id="stage6">
-          <div class="stage-num">[Stage 6] Speech Protection</div>
-          <div class="stage-name">Voice Floor & Limiter</div>
-          <div class="stage-desc">Continuous hold, speech gain floor (min 0.55), zero hard mutes.</div>
-          <div class="stage-badge" id="stage6Badge">VOICE PROTECTED</div>
-        </div>
-      </div>
-    </section>
-
-    <!-- 4. Performance & Telemetry Cards Grid -->
-    <section class="metrics-grid">
-      <!-- Measured End-to-End Latency -->
-      <div class="metric-card latency-card">
-        <div class="metric-header">
-          <span>End-to-End Latency</span>
-          <span class="metric-badge badge-latency" id="latencyBadge">Target &lt;50ms</span>
-        </div>
-        <div class="metric-value" id="metricLatency">-- ms</div>
-        <div class="metric-sub" id="metricLatencySub">Cap: -- | Proc: -- | Buffer: -- ms</div>
-      </div>
-
-      <!-- Estimated SNR Improvement -->
-      <div class="metric-card">
-        <div class="metric-header">
-          <span>Estimated SNR Delta</span>
-          <span class="metric-badge badge-snr">Estimated</span>
-        </div>
-        <div class="metric-value" id="metricSnr">+0.0 dB</div>
-        <div class="metric-sub">Running exponential moving average</div>
-      </div>
-
-      <!-- Quantum Tuned Step Size -->
-      <div class="metric-card">
-        <div class="metric-header">
-          <span>NLMS Step Size (&mu;)</span>
-          <span class="metric-badge badge-quantum">Async GQPSO</span>
-        </div>
-        <div class="metric-value" id="metricStep">0.2500</div>
-        <div class="metric-sub">Optimized in background; zero audio jitter</div>
-      </div>
-
-      <!-- Noise Floor Baseline -->
-      <div class="metric-card">
-        <div class="metric-header">
-          <span>Noise Floor Baseline</span>
-          <span class="metric-badge">Presence Gate</span>
-        </div>
-        <div class="metric-value" id="metricFloor">1.00e-05</div>
-        <div class="metric-sub">Auto-adapts downward or manual recalibrate</div>
-      </div>
-
-      <!-- Hardware Resource Utilization -->
-      <div class="metric-card">
-        <div class="metric-header">
-          <span>Hardware Utilization</span>
-          <span class="metric-badge" id="hwProfileBadge">CPU / GPU</span>
-        </div>
-        <div class="metric-value" id="metricHw">CPU: 0%</div>
-        <div class="metric-sub" id="metricHwSub">GPU: 0% &bull; RAM: 0 MB</div>
-      </div>
-
-      <!-- Frames & Reliability -->
-      <div class="metric-card">
-        <div class="metric-header">
-          <span>Stream Reliability</span>
-          <span class="metric-badge">Frames Active</span>
-        </div>
-        <div class="metric-value" id="metricFrames">0</div>
-        <div class="metric-sub" id="metricDropped">Drops: 0 &bull; Underruns: 0</div>
-      </div>
-
-      <!-- Speech Probability & Continuous Protection Gate -->
-      <div class="metric-card speech-card">
-        <div class="metric-header">
-          <span>Speech Probability</span>
-          <span class="metric-badge badge-snr" id="speechBadge">Voice Protected</span>
-        </div>
-        <div class="metric-value" id="metricSpeech">-- %</div>
-        <div class="metric-sub" id="metricSpeechSub">Continuous hold &bull; Floor: 0.55 &bull; 0 Mutes</div>
-      </div>
-    </section>
-
-    <!-- 5. Visual Inspection: Dual Synchronized Waveforms & Spectrograms -->
-    <section class="visuals-grid">
-      <!-- Before / After Waveform Oscilloscope -->
-      <div class="visual-panel">
+      <!-- Pipeline Signal Chain Flow Diagram -->
+      <section class="pipeline-section">
         <div class="section-header">
           <div class="section-title">
-            <span>◈</span> Before / After Waveform Oscilloscope
+            <span>◆</span> Pipeline Signal Chain Architecture &bull; Dynamic Stage Activation
           </div>
-          <span class="metric-sub">Decimated real-time time-domain trace</span>
+          <span class="metric-sub">Presence Gate &bull; Acoustic Classifier &bull; Cross-Modal Shock &bull; 64-Tap NLMS &bull; Async GQPSO &bull; OLA Wiener &bull; Dynamics</span>
         </div>
 
-        <div class="canvas-container">
-          <span class="canvas-label label-input">Raw Primary Input (Speech + Drone + Bursts)</span>
-          <canvas id="inputWaveCanvas"></canvas>
+        <div class="pipeline-diagram">
+          <!-- Stage 0: Presence Gate -->
+          <div class="pipeline-stage active" id="stage0">
+            <div class="stage-num">[Stage 0] Presence Gate</div>
+            <div class="stage-name">Energy Baseline</div>
+            <div class="stage-desc">Bypasses pipeline during quiet periods; preserves speech purity.</div>
+            <div class="stage-badge" id="stage0Badge">CHECKING FLOOR</div>
+          </div>
+
+          <!-- Stage 1: Noise Classifier -->
+          <div class="pipeline-stage" id="stage1">
+            <div class="stage-num">[Stage 1] Classifier</div>
+            <div class="stage-name">Spectral Analysis</div>
+            <div class="stage-desc">8-feature DSP analysis: rolloff, peakiness, crest factor, onset.</div>
+            <div class="stage-badge" id="stage1Badge">STANDBY</div>
+          </div>
+
+          <!-- Stage 1b: Accelerometer Cross-Check -->
+          <div class="pipeline-stage" id="stage1b">
+            <div class="stage-num">[Stage 1b] Cross-Modal</div>
+            <div class="stage-name">Shock Sensor</div>
+            <div class="stage-desc">Confirms mechanical shock to suppress false acoustic gunshots.</div>
+            <div class="stage-badge" id="stage1bBadge">SCORE: 2%</div>
+          </div>
+
+          <!-- Stage 2: NLMS Adaptive Filter -->
+          <div class="pipeline-stage" id="stage2">
+            <div class="stage-num">[Stage 2] NLMS Filter</div>
+            <div class="stage-name">Adaptive Canceller</div>
+            <div class="stage-desc">64-tap normalized LMS FIR filter with leakage.</div>
+            <div class="stage-badge" id="stage2Badge">&mu; = 0.2500</div>
+          </div>
+
+          <!-- Stage 3: Quantum Tuner -->
+          <div class="pipeline-stage" id="stage3">
+            <div class="stage-num">[Stage 3] GQPSO Tuner</div>
+            <div class="stage-name">Quantum Auto-Tuner</div>
+            <div class="stage-desc">Async background swarm optimizes &mu; without stalling audio.</div>
+            <div class="stage-badge" id="stage3Badge">ASYNC RUNNING</div>
+          </div>
+
+          <!-- Stage 4 & 5: Confidence Gate & Wiener Cleanup -->
+          <div class="pipeline-stage" id="stage4">
+            <div class="stage-num">[Stage 4/5] Safety & Cleanup</div>
+            <div class="stage-name">OLA Wiener Masking</div>
+            <div class="stage-desc">50% overlap-add spectral soft masking with fail-safe bypass.</div>
+            <div class="stage-badge" id="stage5Badge">WIENER ON</div>
+          </div>
+
+          <!-- Stage 6: Speech Protection Gate & Dynamics -->
+          <div class="pipeline-stage" id="stage6">
+            <div class="stage-num">[Stage 6] Speech Protection</div>
+            <div class="stage-name">Voice Floor & Limiter</div>
+            <div class="stage-desc">Continuous hold, speech gain floor (min 0.55), zero hard mutes.</div>
+            <div class="stage-badge" id="stage6Badge">VOICE PROTECTED</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Real-Time Detection & Performance Cards Grid -->
+      <section class="metrics-grid">
+        <!-- Live Measured Latency -->
+        <div class="metric-card latency-card">
+          <div class="metric-header">
+            <span>End-to-End Latency</span>
+            <span class="metric-badge badge-latency" id="latencyBadge">Target &lt;50ms</span>
+          </div>
+          <div class="metric-value" id="metricLatency">-- ms</div>
+          <div class="metric-sub" id="metricLatencySub">Cap: -- | Proc: -- | Buffer: -- ms</div>
         </div>
 
-        <div class="canvas-container">
-          <span class="canvas-label label-output">IGARD-Net Enhanced Voice Output</span>
-          <canvas id="outputWaveCanvas"></canvas>
+        <!-- Live Estimated Speech Quality MOS Gauge -->
+        <div class="metric-card mos-card">
+          <div class="metric-header">
+            <span>Estimated Speech MOS</span>
+            <span class="metric-badge badge-mos" id="liveMosBadge">ITU-T P.835</span>
+          </div>
+          <div class="metric-value text-glow-cyan" id="liveMosValue">4.20</div>
+          <div class="metric-sub" id="liveMosSub">Objective Quality Score (1.0 &ndash; 5.0)</div>
         </div>
-      </div>
 
-      <!-- Before / After Waterfall Spectrogram -->
-      <div class="visual-panel">
+        <!-- Estimated SNR Improvement -->
+        <div class="metric-card">
+          <div class="metric-header">
+            <span>Estimated SNR Delta</span>
+            <span class="metric-badge badge-snr">Noise Attenuation</span>
+          </div>
+          <div class="metric-value" id="metricSnr">+0.0 dB</div>
+          <div class="metric-sub">Running exponential moving average</div>
+        </div>
+
+        <!-- Speech Probability & Voice Activity Detection -->
+        <div class="metric-card speech-card">
+          <div class="metric-header">
+            <span>Speech Presence (VAD)</span>
+            <span class="metric-badge badge-snr" id="speechBadge">Voice Protected</span>
+          </div>
+          <div class="metric-value" id="metricSpeech">-- %</div>
+          <div class="metric-sub" id="metricSpeechSub">Continuous hold &bull; Floor: 0.55 &bull; 0 Mutes</div>
+        </div>
+
+        <!-- Quantum Tuned Step Size -->
+        <div class="metric-card">
+          <div class="metric-header">
+            <span>NLMS Step Size (&mu;)</span>
+            <span class="metric-badge badge-quantum">Async GQPSO</span>
+          </div>
+          <div class="metric-value" id="metricStep">0.2500</div>
+          <div class="metric-sub">Optimized in background; zero audio jitter</div>
+        </div>
+
+        <!-- Hardware Resource Utilization -->
+        <div class="metric-card">
+          <div class="metric-header">
+            <span>Hardware Utilization</span>
+            <span class="metric-badge" id="hwProfileBadge">CPU / GPU</span>
+          </div>
+          <div class="metric-value" id="metricHw">CPU: 0%</div>
+          <div class="metric-sub" id="metricHwSub">GPU: 0% &bull; RAM: 0 MB</div>
+        </div>
+
+        <!-- Frames & Reliability -->
+        <div class="metric-card">
+          <div class="metric-header">
+            <span>Stream Reliability</span>
+            <span class="metric-badge">Frames Active</span>
+          </div>
+          <div class="metric-value" id="metricFrames">0</div>
+          <div class="metric-sub" id="metricDropped">Drops: 0 &bull; Underruns: 0</div>
+        </div>
+      </section>
+
+      <!-- Visual Inspection: Dual Synchronized Waveforms & Spectrograms -->
+      <section class="visuals-grid">
+        <!-- Before / After Waveform Oscilloscope -->
+        <div class="visual-panel">
+          <div class="section-header">
+            <div class="section-title">
+              <span>◈</span> Before / After Waveform Oscilloscope
+            </div>
+            <span class="metric-sub">Decimated real-time time-domain trace</span>
+          </div>
+
+          <div class="canvas-container">
+            <span class="canvas-label label-input">Raw Primary Input (Speech + Drone + Bursts)</span>
+            <canvas id="inputWaveCanvas"></canvas>
+          </div>
+
+          <div class="canvas-container">
+            <span class="canvas-label label-output">IGARD-Net Enhanced Voice Output</span>
+            <canvas id="outputWaveCanvas"></canvas>
+          </div>
+        </div>
+
+        <!-- Before / After Waterfall Spectrogram -->
+        <div class="visual-panel">
+          <div class="section-header">
+            <div class="section-title">
+              <span>◈</span> Before / After Frequency Spectrogram
+            </div>
+            <span class="metric-sub">0 &ndash; 8 kHz spectral energy distribution</span>
+          </div>
+
+          <div class="canvas-container">
+            <span class="canvas-label label-input">Input Spectrum Waterfall (Raw)</span>
+            <canvas id="inputSpecCanvas"></canvas>
+          </div>
+
+          <div class="canvas-container">
+            <span class="canvas-label label-output">Cleaned Spectrum Waterfall (Suppressed Noise)</span>
+            <canvas id="outputSpecCanvas"></canvas>
+          </div>
+        </div>
+      </section>
+
+      <!-- Hardware Sensors & Dual Mic Meters -->
+      <section class="hardware-row">
+        <!-- Dual Mic VU Meters -->
+        <div class="gauge-panel">
+          <div class="section-header">
+            <div class="section-title">
+              <span>▲</span> Dual Microphone RMS Meters
+            </div>
+            <span class="metric-sub">Logarithmic dB Levels</span>
+          </div>
+
+          <div class="mic-meters-container">
+            <div class="meter-track">
+              <div class="meter-label-row">
+                <span>Primary Mic (Soldier Voice + Noise)</span>
+                <span id="primaryDbText">-60.0 dB</span>
+              </div>
+              <div class="meter-bar-outer">
+                <div class="meter-bar-inner" id="primaryMeterBar"></div>
+              </div>
+            </div>
+
+            <div class="meter-track">
+              <div class="meter-label-row">
+                <span>Enhanced Audio Output</span>
+                <span id="outputDbText">-60.0 dB</span>
+              </div>
+              <div class="meter-bar-outer">
+                <div class="meter-bar-inner" id="outputMeterBar"></div>
+              </div>
+            </div>
+
+            <div class="meter-track">
+              <div class="meter-label-row">
+                <span>Reference Mic (Noise Sensor)</span>
+                <span id="refDbText">-60.0 dB</span>
+              </div>
+              <div class="meter-bar-outer">
+                <div class="meter-bar-inner" id="refMeterBar"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Accelerometer Cross-Modal Shock Indicator -->
+        <div class="gauge-panel">
+          <div class="section-header">
+            <div class="section-title">
+              <span>✦</span> Cross-Modal Shock Indicator
+            </div>
+            <span class="metric-sub">ADXL345 / Mock MEMS Sensor</span>
+          </div>
+
+          <div class="shock-container">
+            <div class="shock-orb" id="shockOrb">
+              <div class="shock-val" id="shockVal">0%</div>
+              <div class="shock-sub">Shock Score</div>
+            </div>
+            <div class="shock-info">
+              <div class="shock-badge normal" id="shockBadge">NORMAL (NO IMPACT)</div>
+              <p class="metric-sub" style="margin-top:6px;">Suppresses false gunshots when physical shock is absent.</p>
+              <button id="triggerShockBtn" class="btn btn-secondary btn-sm" style="margin-top:8px;" title="Simulate mechanical recoil shock for testing">
+                <span>⚡</span> Simulate Weapon Recoil
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Audio Device Selection Panel -->
+        <div class="gauge-panel">
+          <div class="section-header">
+            <div class="section-title">
+              <span>⚙</span> Audio Routing &amp; Hardware
+            </div>
+            <span class="metric-sub">Dual-Mic / Simulation</span>
+          </div>
+
+          <div>
+            <label class="audio-label" style="width:100%; margin-bottom:4px;">Audio Input Device:</label>
+            <select id="deviceSelect" class="btn" style="width:100%; background:#0e1524; color:#fff; text-align:left;">
+              <option value="0">Synthetic Tactical Scenario (Dual Mic Simulation)</option>
+            </select>
+            <div class="tactical-notes" style="margin-top:10px; font-size:12px; color:var(--text-muted); line-height:1.5;">
+              <strong>Real-Time Operation:</strong> Continuous audio streaming is active. Use the <em>BEFORE / AFTER</em> button above to toggle between raw input noise and noise-cancelled voice in real time.
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </main>
+
+
+    <!-- ================================================================= -->
+    <!-- VIEW 2: 📁 RECORDED FILE AUDIO STUDIO & MOS EVALUATION SUITE       -->
+    <!-- ================================================================= -->
+    <main id="fileStudioView" class="view-workspace" style="display:none;">
+
+      <!-- Studio Header Banner -->
+      <section class="file-studio-header">
         <div class="section-header">
           <div class="section-title">
-            <span>◈</span> Before / After Frequency Spectrogram
+            <span>📁</span> Recorded WAV Enhancement Studio &amp; Objective MOS Suite
           </div>
-          <span class="metric-sub">0 &ndash; 8 kHz spectral energy distribution</span>
+          <span class="metric-sub">High-Throughput Batch Processing &bull; ITU-T P.835 / P.800 Objective Quality Assessment</span>
         </div>
+      </section>
 
-        <div class="canvas-container">
-          <span class="canvas-label label-input">Input Spectrum Waterfall (Raw)</span>
-          <canvas id="inputSpecCanvas"></canvas>
-        </div>
+      <!-- File Studio Two-Column Grid -->
+      <div class="file-studio-grid">
 
-        <div class="canvas-container">
-          <span class="canvas-label label-output">Cleaned Spectrum Waterfall (Suppressed Noise)</span>
-          <canvas id="outputSpecCanvas"></canvas>
-        </div>
-      </div>
-    </section>
+        <!-- Column 1: File Upload, Controls, and Player -->
+        <div class="file-studio-card">
+          <h3 class="card-heading"><span>⬆</span> Upload &amp; Batch Processing</h3>
 
-    <!-- 6. Hardware Sensors & Interactive Mode Controls -->
-    <section class="hardware-row">
-      <!-- Dual Mic VU Meters -->
-      <div class="gauge-panel">
-        <div class="section-header">
-          <div class="section-title">
-            <span>▲</span> Dual Microphone RMS Meters
-          </div>
-          <span class="metric-sub">Logarithmic dB Levels</span>
-        </div>
-
-        <div class="mic-meters-container">
-          <div class="meter-track">
-            <div class="meter-label-row">
-              <span>Primary Mic (Soldier Voice + Noise)</span>
-              <span id="primaryDbText">-60.0 dB</span>
-            </div>
-            <div class="meter-bar-outer">
-              <div class="meter-bar-inner" id="primaryMeterBar"></div>
-            </div>
-          </div>
-
-          <div class="meter-track">
-            <div class="meter-label-row">
-              <span>Enhanced Audio Output</span>
-              <span id="outputDbText">-60.0 dB</span>
-            </div>
-            <div class="meter-bar-outer">
-              <div class="meter-bar-inner" id="outputMeterBar"></div>
-            </div>
-          </div>
-
-          <div class="meter-track">
-            <div class="meter-label-row">
-              <span>Reference Mic (Noise Sensor)</span>
-              <span id="refDbText">-60.0 dB</span>
-            </div>
-            <div class="meter-bar-outer">
-              <div class="meter-bar-inner" id="refMeterBar"></div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Accelerometer Cross-Modal Shock Indicator -->
-      <div class="gauge-panel">
-        <div class="section-header">
-          <div class="section-title">
-            <span>✦</span> Cross-Modal Shock Indicator
-          </div>
-          <span class="metric-sub">ADXL345 / Mock MEMS Sensor</span>
-        </div>
-
-        <div class="shock-container">
-          <div class="shock-orb" id="shockOrb">
-            <div class="shock-val" id="shockVal">0%</div>
-            <div class="shock-sub">Shock Score</div>
-          </div>
-          <div class="shock-info">
-            <div class="shock-badge normal" id="shockBadge">NORMAL (NO IMPACT)</div>
-            <p class="metric-sub" style="margin-top:6px;">Suppresses false gunshots when physical shock is absent.</p>
-            <button id="triggerShockBtn" class="btn btn-secondary btn-sm" style="margin-top:8px;" title="Simulate mechanical recoil shock for testing">
-              <span>⚡</span> Simulate Weapon Recoil
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <!-- Mode Specific Panels (Real-Time vs File Processing) -->
-      <div class="gauge-panel">
-        <div class="section-header">
-          <div class="section-title">
-            <span id="panelModeTitle">⚙ Real-Time Stream Controls</span>
-          </div>
-          <span class="metric-sub" id="panelModeSub">Dual-Mic / Simulation</span>
-        </div>
-
-        <!-- Real-Time Mode Controls -->
-        <div id="realtimePanel">
-          <label class="audio-label" style="width:100%; margin-bottom:4px;">Audio Input Device:</label>
-          <select id="deviceSelect" class="btn" style="width:100%; background:#0e1524; color:#fff; text-align:left;">
-            <option value="0">Synthetic Tactical Scenario (Dual Mic Simulation)</option>
-          </select>
-          <div class="tactical-notes" style="margin-top:10px; font-size:12px; color:var(--text-muted); line-height:1.5;">
-            <strong>Audio Routing:</strong> Continuous streaming active. Toggle <em>BEFORE / AFTER</em> above to hear raw voice vs noise-cancelled speech instantly.
-          </div>
-        </div>
-
-        <!-- File Upload Mode Controls -->
-        <div id="filePanel" style="display:none;">
+          <!-- Drag and Drop Dropzone -->
           <div class="upload-dropzone" id="uploadDropzone">
-            <span>📁 Drag &amp; Drop PCM WAV file or Click to Upload</span>
+            <div class="dropzone-icon">📁</div>
+            <span class="dropzone-text">Drag &amp; drop PCM WAV file here or click to browse</span>
+            <span class="dropzone-sub">Supports 8kHz &ndash; 48kHz Mono or Stereo WAV</span>
             <input type="file" id="wavFileInput" accept=".wav" style="display:none;">
           </div>
 
-          <button id="runSampleBtn" class="btn btn-primary" style="width:100%; margin-top:8px;">
-            <span>▶</span> Process Repository Sample (sample_voice_44k.wav)
+          <!-- 1-Click Demo Benchmark Button -->
+          <button id="runSampleBtn" class="btn btn-primary btn-block" style="margin-top:12px;">
+            <span>▶</span> Process Repository Benchmark (sample_voice_44k.wav)
           </button>
 
-          <!-- File Metadata Card -->
-          <div id="fileMetaCard" class="file-meta-box" style="display:none; margin-top:8px;">
+          <!-- File Metadata Box -->
+          <div id="fileMetaCard" class="file-meta-box" style="display:none; margin-top:12px;">
             <div class="file-meta-row"><strong>File:</strong> <span id="metaFileName">--</span></div>
-            <div class="file-meta-row"><strong>Duration:</strong> <span id="metaFileDur">--</span> | <strong>SR:</strong> <span id="metaFileSr">--</span> | <strong>Channels:</strong> <span id="metaFileCh">--</span></div>
+            <div class="file-meta-row">
+              <strong>Duration:</strong> <span id="metaFileDur">--</span> &bull; 
+              <strong>Sample Rate:</strong> <span id="metaFileSr">--</span> &bull; 
+              <strong>Channels:</strong> <span id="metaFileCh">--</span>
+            </div>
           </div>
 
-          <!-- Processing Progress Bar -->
-          <div class="progress-container" style="margin-top:10px;">
+          <!-- Dynamic Processing Progress Bar -->
+          <div class="progress-container" style="margin-top:14px;">
             <div class="meter-label-row">
               <span id="fileStatusText">Ready for file</span>
               <span id="fileProgressText">0%</span>
@@ -383,25 +422,94 @@
             </div>
           </div>
 
-          <!-- A/B Comparison Audio Player -->
-          <div id="abPlayerContainer" style="margin-top:10px; display:none;">
+          <!-- Synchronized A/B Comparison Audio Player -->
+          <div id="abPlayerContainer" class="ab-player-box" style="display:none; margin-top:16px;">
+            <h4 class="ab-player-title">A/B Audio Audition</h4>
+            
             <div class="audio-player-row">
-              <span class="audio-label">Original:</span>
-              <audio id="rawAudioPlayer" controls></audio>
+              <span class="audio-label label-raw">Original (Noisy):</span>
+              <audio id="rawAudioPlayer" controls style="width:100%;"></audio>
             </div>
-            <div class="audio-player-row" style="margin-top:6px;">
-              <span class="audio-label" style="color:var(--accent-cyan);">Enhanced:</span>
-              <audio id="cleanedAudioPlayer" controls></audio>
+            
+            <div class="audio-player-row" style="margin-top:8px;">
+              <span class="audio-label label-clean">Enhanced (IGARD-Net):</span>
+              <audio id="cleanedAudioPlayer" controls style="width:100%;"></audio>
             </div>
-            <div style="margin-top:8px; display:flex; gap:8px;">
-              <a id="downloadEnhancedBtn" href="#" class="btn btn-secondary" style="flex:1; text-align:center; text-decoration:none;" download>
-                <span>💾</span> Download Enhanced WAV
+
+            <div style="margin-top:14px;">
+              <a id="downloadEnhancedBtn" href="#" class="btn btn-secondary btn-block" style="text-decoration:none; text-align:center;" download>
+                <span>💾</span> Download Enhanced Audio (.wav)
               </a>
             </div>
           </div>
         </div>
+
+        <!-- Column 2: Objective MOS & Quality Benchmark Results -->
+        <div class="file-studio-card">
+          <h3 class="card-heading"><span>📊</span> Objective Speech Quality &amp; MOS Solution</h3>
+
+          <!-- Big Primary MOS KPI Hero Box -->
+          <div class="mos-hero-box" id="mosHeroBox">
+            <div class="mos-hero-left">
+              <div class="mos-hero-label">PREDICTED OVERALL MOS (ITU-T P.835)</div>
+              <div class="mos-hero-score" id="fileMosScore">--</div>
+              <div class="mos-hero-sub" id="fileMosDelta">Upload or run sample to evaluate speech quality</div>
+            </div>
+            <div class="mos-hero-right">
+              <div class="mos-rating-badge" id="fileMosBadge">AWAITING EVALUATION</div>
+            </div>
+          </div>
+
+          <!-- 4 Detailed Quality Metric Cards -->
+          <div class="file-kpi-grid" style="margin-top:14px;">
+            <!-- Speech Preservation & Continuity -->
+            <div class="file-kpi-card">
+              <span class="file-kpi-title">Speech Preservation</span>
+              <div class="file-kpi-val" id="fileSpeechPreservation">-- %</div>
+              <span class="file-kpi-sub">Continuity Score &bull; Zero Syllables Muted</span>
+            </div>
+
+            <!-- SNR Improvement -->
+            <div class="file-kpi-card">
+              <span class="file-kpi-title">SNR Improvement</span>
+              <div class="file-kpi-val" id="fileSnrImprovement">-- dB</div>
+              <span class="file-kpi-sub">Residual Noise Attenuation</span>
+            </div>
+
+            <!-- Processing Throughput (RTF) -->
+            <div class="file-kpi-card">
+              <span class="file-kpi-title">Processing Speed (RTF)</span>
+              <div class="file-kpi-val" id="fileSpeedRtf">--</div>
+              <span class="file-kpi-sub" id="fileSpeedSub">Real-Time Factor</span>
+            </div>
+
+            <!-- Speech Intelligibility Score (SIG) -->
+            <div class="file-kpi-card">
+              <span class="file-kpi-title">Speech Intelligibility (SIG)</span>
+              <div class="file-kpi-val" id="fileSpeechSig">-- / 5.0</div>
+              <span class="file-kpi-sub">Formants &amp; Harmonics Preserved</span>
+            </div>
+
+            <!-- Noise Suppression Score (BAK) -->
+            <div class="file-kpi-card">
+              <span class="file-kpi-title">Noise Suppression (BAK)</span>
+              <div class="file-kpi-val" id="fileNoiseBak">-- / 5.0</div>
+              <span class="file-kpi-sub">Stationary &amp; Transient Muting</span>
+            </div>
+
+            <!-- Artifact & Distortion Level -->
+            <div class="file-kpi-card">
+              <span class="file-kpi-title">Artifacts &amp; Distortion</span>
+              <div class="file-kpi-val text-glow-cyan" id="fileArtifacts">0 Faults</div>
+              <span class="file-kpi-sub">No Clicks &bull; No Ticking &bull; Natural Voice</span>
+            </div>
+          </div>
+
+        </div>
+
       </div>
-    </section>
+
+    </main>
 
   </div>
 

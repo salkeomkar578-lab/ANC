@@ -21,7 +21,7 @@ from typing import Dict, Any, Tuple
 import numpy as np
 from scipy.signal import resample_poly
 
-from artifact_detector import ArtifactDetector
+from processing.artifact_detector import ArtifactDetector
 
 
 def load_wav_mono_16k(filepath: Path) -> Tuple[np.ndarray, int]:

@@ -14,7 +14,7 @@ Distinguishes between 'impulsive' (gunshot/artillery), 'steady' (engine/rotor), 
 
 from typing import Tuple, Dict, Any, Optional
 import numpy as np
-from speech_detector import SpeechDetector
+from processing.speech_detector import SpeechDetector
 
 
 class NoiseClassifier:

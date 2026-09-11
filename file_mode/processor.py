@@ -15,6 +15,7 @@ import soundfile as sf
 from core.pipeline import IgardNetPipeline
 from core.state import SystemState
 from audio.resampler import resample_audio
+from processing.mos_estimator import MOSEstimator
 
 
 class FileProcessor:
@@ -28,6 +29,7 @@ class FileProcessor:
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.target_sr = sample_rate
         self.block_size = block_size
+        self.mos_estimator = MOSEstimator(sample_rate=self.target_sr)
 
     def process_file(
         self,
@@ -127,10 +129,18 @@ class FileProcessor:
         out_path = self.output_dir / out_filename
         sf.write(str(out_path), (cleaned_safe * 32767.0).astype(np.int16), self.target_sr, subtype="PCM_16")
 
+        # 6. Objective MOS (Mean Opinion Score: 1.0 - 5.0) & Speech Quality Evaluation
+        mos_eval = self.mos_estimator.evaluate_signals(
+            raw_signal=primary,
+            enhanced_signal=cleaned_safe,
+            reference_noise=reference,
+        )
+
         return {
             "status": "success",
             "filename": filepath.name,
-            "output_file": str(out_path),
+            "input_file": filepath.name,
+            "output_file": out_filename,
             "output_path": str(out_path),
             "output_filename": out_filename,
             "sample_rate": self.target_sr,
@@ -140,4 +150,13 @@ class FileProcessor:
             "processing_time_s": round(proc_time_s, 3),
             "rtf": round(rtf, 4),
             "frames_processed": total_samples // self.block_size,
+            # MOS Solution & Objective Quality Metrics
+            "overall_mos": mos_eval["overall_mos"],
+            "raw_mos": mos_eval["raw_mos"],
+            "mos_gain": mos_eval["mos_gain"],
+            "mos_rating": mos_eval["mos_rating"],
+            "speech_intelligibility": mos_eval["speech_intelligibility"],
+            "noise_suppression": mos_eval["noise_suppression"],
+            "speech_preservation_score": mos_eval["speech_preservation_score"],
+            "snr_improvement_db": mos_eval["snr_improvement_db"],
         }

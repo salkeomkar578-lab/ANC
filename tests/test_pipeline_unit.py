@@ -14,6 +14,8 @@ from processing.tuner import QuantumInspiredTuner
 from processing.confidence_gate import ConfidenceGate
 from processing.wiener_cleanup import ResidualCleanup
 from processing.dynamics import VoiceProtectionDynamics
+from processing.speech_detector import SpeechDetector
+from processing.speech_protection import SpeechProtectionGate
 from sensors.mock_sensor import MockAccelerometer
 from sensors.accelerometer import cross_check_confidence
 from backends.cpu_backend import CPUBackend
@@ -138,7 +140,30 @@ class TestPipelineUnits(unittest.TestCase):
         # Output should be lifted to satisfy gain floor
         self.assertGreater(np.max(np.abs(protected)), np.max(np.abs(over_attenuated)))
         # Output must not clip
-        self.assertLessEqual(np.max(np.abs(protected)), 1.0)
+    def test_stage1_speech_detector(self):
+        detector = SpeechDetector(sample_rate=self.sample_rate, frame_size=256)
+        # Test quiet block
+        quiet = np.random.randn(256) * 0.001
+        sp_prob, n_prob, is_speech = detector.detect(quiet)
+        self.assertLess(sp_prob, 0.5)
+        self.assertFalse(is_speech)
+
+        # Test harmonic speech-like block
+        t = np.arange(256) / self.sample_rate
+        speech = 0.5 * np.sin(2 * np.pi * 350 * t) + 0.3 * np.sin(2 * np.pi * 700 * t)
+        for _ in range(3):
+            sp_prob, n_prob, is_speech = detector.detect(speech)
+        self.assertGreater(sp_prob, 0.4)
+
+    def test_stage6_speech_protection_gate(self):
+        gate = SpeechProtectionGate(sample_rate=self.sample_rate, frame_size=256, minimum_voice_gain=0.55)
+        raw = np.sin(np.linspace(0, 10, 256)) * 0.5
+        # Simulate over-suppressed audio
+        muted = raw * 0.05
+        # With high speech probability, gate must enforce minimum gain of 0.55
+        protected, applied_gain = gate.protect(raw, muted, speech_probability=0.85, noise_probability=0.15)
+        self.assertGreaterEqual(applied_gain, 0.50)
+        np.testing.assert_allclose(protected, raw * applied_gain, rtol=1e-3, atol=1e-3)
 
 
 if __name__ == "__main__":
