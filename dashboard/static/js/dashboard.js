@@ -778,6 +778,7 @@
     // Mode Switcher Tabs (Strictly Separated Views)
     const realtimeBtn = document.getElementById('realtimeModeBtn');
     const fileBtn = document.getElementById('fileModeBtn');
+    const jumpBtn = document.getElementById('jumpFileModeBtn');
     const liveView = document.getElementById('liveDetectionView');
     const fileView = document.getElementById('fileStudioView');
 
@@ -786,52 +787,91 @@
       if (mode === 'realtime') {
         if (realtimeBtn) realtimeBtn.classList.add('active');
         if (fileBtn) fileBtn.classList.remove('active');
-        if (liveView) liveView.style.display = 'flex';
-        if (fileView) fileView.style.display = 'none';
+        if (liveView) {
+          liveView.classList.add('active');
+          liveView.style.display = 'block';
+        }
+        if (fileView) {
+          fileView.classList.remove('active');
+          fileView.style.display = 'none';
+        }
         setTimeout(resizeCanvases, 60);
       } else {
         if (fileBtn) fileBtn.classList.add('active');
         if (realtimeBtn) realtimeBtn.classList.remove('active');
-        if (liveView) liveView.style.display = 'none';
-        if (fileView) fileView.style.display = 'flex';
+        if (liveView) {
+          liveView.classList.remove('active');
+          liveView.style.display = 'none';
+        }
+        if (fileView) {
+          fileView.classList.add('active');
+          fileView.style.display = 'block';
+        }
       }
     }
 
     if (realtimeBtn) realtimeBtn.addEventListener('click', () => switchMode('realtime'));
     if (fileBtn) fileBtn.addEventListener('click', () => switchMode('file'));
+    if (jumpBtn) jumpBtn.addEventListener('click', () => switchMode('file'));
 
-    // Before / After Toggle
-    const baBtn = document.getElementById('beforeAfterBtn');
-    if (baBtn) {
-      baBtn.addEventListener('click', async () => {
-        const nextState = !isBeforeAfterEnhanced;
-        updateBeforeAfterUI(nextState);
-        try {
-          await fetch('/api/mode/toggle_before_after', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ enabled: nextState })
-          });
-        } catch (e) {
-          console.error(e);
-        }
+    // Before / After Toggle (Header and V3 HUD)
+    const baBtns = [document.getElementById('beforeAfterBtn'), document.getElementById('v3BeforeAfterBtn')];
+    baBtns.forEach(btn => {
+      if (btn) {
+        btn.addEventListener('click', async () => {
+          const nextState = !isBeforeAfterEnhanced;
+          updateBeforeAfterUI(nextState);
+          try {
+            await fetch('/api/mode/toggle_before_after', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ enabled: nextState })
+            });
+          } catch (e) {
+            console.error(e);
+          }
+        });
+      }
+    });
+
+    // Autopilot Toggle (Header and V3 HUD)
+    const apBtns = [document.getElementById('autopilotBtn'), document.getElementById('v3AutopilotBtn')];
+    apBtns.forEach(btn => {
+      if (btn) {
+        btn.addEventListener('click', async () => {
+          const nextState = !isAutopilotOn;
+          updateAutopilotUI(nextState);
+          try {
+            await fetch('/api/mode/toggle_autopilot', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ enabled: nextState })
+            });
+          } catch (e) {
+            console.error(e);
+          }
+        });
+      }
+    });
+
+    // Suppression Slider
+    const slider = document.getElementById('suppressionSlider');
+    const sliderVal = document.getElementById('suppressionSliderVal');
+    if (slider) {
+      slider.addEventListener('input', (e) => {
+        const val = e.target.value;
+        if (sliderVal) sliderVal.textContent = val + '%';
       });
-    }
-
-    // Autopilot Toggle
-    const apBtn = document.getElementById('autopilotBtn');
-    if (apBtn) {
-      apBtn.addEventListener('click', async () => {
-        const nextState = !isAutopilotOn;
-        updateAutopilotUI(nextState);
+      slider.addEventListener('change', async (e) => {
+        const val = parseFloat(e.target.value) / 100.0;
         try {
-          await fetch('/api/mode/toggle_autopilot', {
+          await fetch('/api/mode/set_suppression', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ enabled: nextState })
+            body: JSON.stringify({ suppression: val })
           });
-        } catch (e) {
-          console.error(e);
+        } catch (err) {
+          console.error(err);
         }
       });
     }
@@ -884,44 +924,32 @@
     const stopBtn = document.getElementById('stopBtn');
 
     async function handleStart() {
-      // 1. Resume AudioContext within click user gesture
       if (!audioCtx) {
         audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
       }
       if (audioCtx.state === 'suspended') {
         await audioCtx.resume();
       }
-
-      // 2. Start backend live engine
       try {
         await fetch('/api/start_live', { method: 'POST' });
       } catch (e) {
         console.error('Failed to start live stream:', e);
       }
-
-      // 3. Connect live browser audio audition
       if (!isAuditionActive) {
         startBrowserAudioAudition();
       }
-
-      // 4. Update UI state synchronously
       updateStreamButtonState(true);
       const statusText = document.getElementById('statusText');
       if (statusText) statusText.textContent = 'Live audio streaming active — listening & enhancing in real time.';
     }
 
     async function handleStop() {
-      // 1. Stop browser audio audition
       stopBrowserAudioAudition();
-
-      // 2. Stop backend live engine
       try {
         await fetch('/api/stop', { method: 'POST' });
       } catch (e) {
         console.error('Failed to stop live stream:', e);
       }
-
-      // 3. Update UI state synchronously
       updateStreamButtonState(false);
       const statusText = document.getElementById('statusText');
       if (statusText) statusText.textContent = 'Live stream paused / idle.';
@@ -933,6 +961,7 @@
     // File Upload & Processing
     const dropzone = document.getElementById('uploadDropzone');
     const fileInput = document.getElementById('wavFileInput');
+    const runMewBtn = document.getElementById('runMewBtn');
     const runSampleBtn = document.getElementById('runSampleBtn');
 
     if (dropzone && fileInput) {
@@ -963,8 +992,33 @@
       fileInput.addEventListener('change', () => {
         if (fileInput.files && fileInput.files.length > 0) {
           const selectedFile = fileInput.files[0];
-          fileInput.value = ''; // Allow selecting the same file repeatedly
+          fileInput.value = '';
           handleFileUpload(selectedFile);
+        }
+      });
+    }
+
+    if (runMewBtn) {
+      runMewBtn.addEventListener('click', async () => {
+        const s = document.getElementById('fileStatusText');
+        const pBar = document.getElementById('fileProgressBar');
+        const pText = document.getElementById('fileProgressText');
+        const trackerBadge = document.getElementById('trackerStatusBadge');
+        if (s) s.textContent = 'Initiating tactical benchmark (raw_mew.wav — speech + engine noise)...';
+        if (pBar) pBar.style.width = '8%';
+        if (pText) pText.textContent = '8%';
+        if (trackerBadge) {
+          trackerBadge.textContent = 'RUNNING';
+          trackerBadge.className = 'tracker-status running';
+        }
+        try {
+          await fetch('/api/process_file', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ filename: 'raw_mew.wav' })
+          });
+        } catch (e) {
+          console.error(e);
         }
       });
     }
@@ -986,7 +1040,7 @@
           await fetch('/api/process_file', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ filename: null })
+            body: JSON.stringify({ filename: 'sample_voice_44k.wav' })
           });
         } catch (e) {
           console.error(e);
@@ -1272,100 +1326,6 @@
           baToggleBtn.style.borderColor = '#00f0ff';
         }
       };
-    }
-  }
-
-  // --- Setup Dashboard Control Handlers ---
-  function setupControls() {
-    const startBtn = document.getElementById('startBtn');
-    if (startBtn) {
-      startBtn.addEventListener('click', async () => {
-        try {
-          await fetch('/api/start_live', { method: 'POST' });
-          updateStreamButtonState(true);
-        } catch (e) {
-          console.error(e);
-        }
-      });
-    }
-
-    const stopBtn = document.getElementById('stopBtn');
-    if (stopBtn) {
-      stopBtn.addEventListener('click', async () => {
-        try {
-          await fetch('/api/stop', { method: 'POST' });
-          updateStreamButtonState(false);
-        } catch (e) {
-          console.error(e);
-        }
-      });
-    }
-
-    // Before/After buttons
-    const baBtns = [document.getElementById('beforeAfterBtn'), document.getElementById('v3BeforeAfterBtn')];
-    baBtns.forEach(btn => {
-      if (btn) btn.addEventListener('click', toggleBeforeAfter);
-    });
-
-    // Autopilot buttons
-    const apBtns = [document.getElementById('autopilotBtn'), document.getElementById('v3AutopilotBtn')];
-    apBtns.forEach(btn => {
-      if (btn) btn.addEventListener('click', toggleAutopilot);
-    });
-
-    // Suppression slider
-    const slider = document.getElementById('suppressionSlider');
-    const sliderVal = document.getElementById('suppressionSliderVal');
-    if (slider) {
-      slider.addEventListener('input', (e) => {
-        const val = e.target.value;
-        if (sliderVal) sliderVal.textContent = val + '%';
-      });
-      slider.addEventListener('change', async (e) => {
-        const val = parseFloat(e.target.value) / 100.0;
-        try {
-          await fetch('/api/mode/set_suppression', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ suppression: val })
-          });
-        } catch (err) {
-          console.error(err);
-        }
-      });
-    }
-
-    // Recalibrate button
-    const recalBtn = document.getElementById('recalibrateBtn');
-    if (recalBtn) {
-      recalBtn.addEventListener('click', async () => {
-        try {
-          await fetch('/api/recalibrate', { method: 'POST' });
-        } catch (e) {
-          console.error(e);
-        }
-      });
-    }
-
-    // Mode tabs (Live vs File)
-    const liveTab = document.getElementById('realtimeModeBtn');
-    const fileTab = document.getElementById('fileModeBtn');
-    const liveView = document.getElementById('liveDetectionView');
-    const fileView = document.getElementById('recordedFileView');
-
-    if (liveTab && fileTab) {
-      liveTab.addEventListener('click', () => {
-        liveTab.classList.add('active');
-        fileTab.classList.remove('active');
-        if (liveView) liveView.classList.add('active');
-        if (fileView) fileView.classList.remove('active');
-      });
-      fileTab.addEventListener('click', () => {
-        fileTab.classList.add('active');
-        liveTab.classList.remove('active');
-        if (fileView) fileView.classList.add('active');
-        if (liveView) liveView.classList.remove('active');
-      });
     }
   }
 

@@ -1462,5 +1462,142 @@ audio {
   grid-column: 1 / -1;
 }
 
+/* ================================================================= */
+/* Mode Switcher Tabs & View Workspace Switching                     */
+/* ================================================================= */
+.mode-nav-tabs {
+  display: flex;
+  align-items: center;
+  background: rgba(10, 16, 28, 0.85);
+  border: 1px solid rgba(56, 189, 248, 0.25);
+  border-radius: var(--radius-md);
+  padding: 4px;
+  gap: 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
 
+.mode-tab-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 700;
+  font-family: var(--font-sans);
+  padding: 8px 18px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  outline: none;
+}
 
+.mode-tab-btn:hover:not(.active) {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.mode-tab-btn.active {
+  background: linear-gradient(135deg, rgba(0, 240, 255, 0.22), rgba(0, 119, 182, 0.35));
+  border-color: var(--accent-cyan);
+  color: #fff;
+  box-shadow: 0 0 16px rgba(0, 240, 255, 0.35);
+  text-shadow: 0 0 8px rgba(0, 240, 255, 0.5);
+}
+
+.live-dot-indicator {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #ff3366;
+  box-shadow: 0 0 10px #ff3366;
+  animation: pulseDot 1.2s infinite;
+  display: inline-block;
+}
+
+.view-workspace {
+  display: none;
+}
+
+.view-workspace.active {
+  display: block;
+}
+
+/* ================================================================= */
+/* Demonstration Jump Banner (Recorded File Studio Callout)          */
+/* ================================================================= */
+.demo-jump-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: linear-gradient(90deg, rgba(12, 22, 42, 0.95), rgba(16, 32, 58, 0.85));
+  border: 1px solid rgba(0, 240, 255, 0.3);
+  border-left: 4px solid var(--accent-cyan);
+  border-radius: var(--radius-md);
+  padding: 14px 20px;
+  margin-bottom: 20px;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.demo-jump-content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+}
+
+.demo-jump-badge {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  color: var(--accent-cyan);
+  text-transform: uppercase;
+}
+
+.demo-jump-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: -0.2px;
+}
+
+.demo-jump-desc {
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.demo-jump-desc strong {
+  color: var(--accent-cyan);
+}
+
+.demo-jump-btn {
+  font-size: 13px !important;
+  font-weight: 700 !important;
+  padding: 10px 20px !important;
+  box-shadow: 0 0 16px rgba(0, 240, 255, 0.3) !important;
+  white-space: nowrap;
+}
+
+.btn-demo-mew {
+  background: linear-gradient(135deg, #00d2be, #0077b6) !important;
+  border: 1px solid rgba(0, 210, 190, 0.5) !important;
+  color: #fff !important;
+  font-weight: 700 !important;
+  font-size: 13px !important;
+  padding: 10px 16px !important;
+  box-shadow: 0 0 16px rgba(0, 210, 190, 0.25) !important;
+  transition: all 0.25s ease !important;
+}
+
+.btn-demo-mew:hover {
+  background: linear-gradient(135deg, #00e676, #00b4d8) !important;
+  box-shadow: 0 0 24px rgba(0, 230, 118, 0.4) !important;
+  transform: translateY(-1px);
+}

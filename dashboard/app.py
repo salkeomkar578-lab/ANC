@@ -209,16 +209,22 @@ def api_process_file():
     filename = data.get("filename")
 
     if not filename:
-        # Default to repo sample file if available
-        sample_path = PROJECT_ROOT / "sample_voice_44k.wav"
-        if sample_path.exists():
-            target_path = sample_path
+        # Default to tactical regression file if available, or sample voice
+        if (PROJECT_ROOT / "raw_mew.wav").exists():
+            target_path = PROJECT_ROOT / "raw_mew.wav"
+        elif (PROJECT_ROOT / "sample_voice_44k.wav").exists():
+            target_path = PROJECT_ROOT / "sample_voice_44k.wav"
         else:
             return jsonify({"status": "error", "message": "No filename specified."}), 400
     else:
         target_path = UPLOAD_FOLDER / Path(filename).name
         if not target_path.exists():
-            return jsonify({"status": "error", "message": f"File {filename} not found."}), 404
+            # Check PROJECT_ROOT for repo reference benchmark files
+            root_candidate = PROJECT_ROOT / Path(filename).name
+            if root_candidate.exists():
+                target_path = root_candidate
+            else:
+                return jsonify({"status": "error", "message": f"File {filename} not found."}), 404
 
     # Run processing asynchronously to keep HTTP responsive
     def run_file_proc():

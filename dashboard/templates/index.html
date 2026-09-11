@@ -34,10 +34,10 @@
       <!-- Mode Switcher Tabs -->
       <div class="mode-nav-tabs">
         <button id="realtimeModeBtn" class="mode-tab-btn active" title="Live audio stream, speech detection, and oscilloscopes">
-          <span class="live-dot-indicator"></span> 🔴 Live Detection Mode
+          <span class="live-dot-indicator"></span> 🔴 Live Real-Time Mode
         </button>
         <button id="fileModeBtn" class="mode-tab-btn" title="Recorded audio enhancement studio with objective MOS evaluation">
-          <span>📁</span> Recorded File Studio
+          <span>📁</span> Recorded Voice Studio (Upload &amp; Compare)
         </button>
       </div>
 
@@ -75,9 +75,6 @@
 
 
     <!-- ================================================================= -->
-    <!-- VIEW 1: 🔴 LIVE REAL-TIME DETECTION & STREAMING WORKSPACE         -->
-    <!-- ================================================================= -->
-    <!-- ================================================================= -->
     <!-- VIEW 1: 🔴 LIVE REAL-TIME DETECTION & STREAMING WORKSPACE (V3)     -->
     <!-- ================================================================= -->
     <main id="liveDetectionView" class="view-workspace active">
@@ -91,6 +88,18 @@
         <div class="status-meta" id="statusMeta">
           Latency: 2.4 ms &bull; Frame: 256 samples @ 16 kHz &bull; Backend: NVIDIA CUDA / CPU
         </div>
+      </section>
+
+      <!-- Quick Jump Banner to Recorded File Studio -->
+      <section class="demo-jump-banner">
+        <div class="demo-jump-content">
+          <div class="demo-jump-badge">DEMONSTRATION &amp; BENCHMARK</div>
+          <div class="demo-jump-title">Recorded Audio Enhancement &amp; Comparative Analysis Studio</div>
+          <div class="demo-jump-desc">Need to evaluate recorded speech, compare raw vs. enhanced side-by-side, or upload your own audio? Test directly against the official <strong>raw_mew.wav</strong> tactical recording.</div>
+        </div>
+        <button id="jumpFileModeBtn" class="btn btn-primary demo-jump-btn">
+          <span>📁</span> Open Recorded Voice Studio
+        </button>
       </section>
 
       <!-- V3 Primary Telemetry HUD (Clean 4-Card Grid) -->
@@ -313,15 +322,15 @@
     <!-- ================================================================= -->
     <!-- VIEW 2: 📁 RECORDED FILE AUDIO STUDIO & MOS EVALUATION SUITE       -->
     <!-- ================================================================= -->
-    <main id="fileStudioView" class="view-workspace" style="display:none;">
+    <main id="fileStudioView" class="view-workspace">
 
       <!-- Studio Header Banner -->
       <section class="file-studio-header">
         <div class="section-header">
           <div class="section-title">
-            <span>📁</span> Recorded WAV Enhancement Studio &amp; Objective MOS Suite
+            <span>📁</span> Recorded Voice Enhancement Studio &amp; Comparative Analysis
           </div>
-          <span class="metric-sub">High-Throughput Batch Processing &bull; ITU-T P.835 / P.800 Objective Quality Assessment</span>
+          <span class="metric-sub">High-Throughput Batch Processing &bull; ITU-T P.835 Objective Quality Assessment &bull; Speech vs Noise Separation</span>
         </div>
       </section>
 
@@ -330,19 +339,24 @@
 
         <!-- Column 1: File Upload, Controls, and Player -->
         <div class="file-studio-card">
-          <h3 class="card-heading"><span>⬆</span> Upload &amp; Batch Processing</h3>
+          <h3 class="card-heading"><span>⬆</span> Upload &amp; Demonstration Processing</h3>
 
           <!-- Drag and Drop Dropzone (Supports All Major Audio Formats) -->
           <div class="upload-dropzone" id="uploadDropzone">
             <div class="dropzone-icon">🎵</div>
             <span class="dropzone-text">Drag &amp; drop audio file here or click to browse</span>
-            <span class="dropzone-sub">Supports WAV, MP3, FLAC, OGG, M4A, AAC, AIFF (8 kHz &ndash; 48 kHz Mono/Stereo)</span>
+            <span class="dropzone-sub">Upload any recorded voice (WAV, MP3, FLAC, OGG, M4A, AAC) &bull; 8 kHz &ndash; 48 kHz Mono/Stereo</span>
             <input type="file" id="wavFileInput" accept="audio/*,.wav,.mp3,.flac,.ogg,.m4a,.aac,.aiff,.aif,.wma,.opus,.webm,.caf,.au" style="display:none;">
           </div>
 
-          <!-- 1-Click Demo Benchmark Button -->
-          <button id="runSampleBtn" class="btn btn-primary btn-block" style="margin-top:12px;">
-            <span>▶</span> Process Repository Benchmark (sample_voice_44k.wav)
+          <!-- 1-Click Tactical Demonstration Benchmark (raw_mew.wav) -->
+          <button id="runMewBtn" class="btn btn-primary btn-block btn-demo-mew" style="margin-top:14px;">
+            <span>🎯</span> 1-Click Demo: Process raw_mew.wav (Tactical Voice + Engine Noise)
+          </button>
+
+          <!-- Secondary Sample Button -->
+          <button id="runSampleBtn" class="btn btn-secondary btn-block" style="margin-top:8px;">
+            <span>▶</span> Process sample_voice_44k.wav
           </button>
 
           <!-- File Metadata Box -->
