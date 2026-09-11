@@ -1,0 +1,7 @@
+numpy
+scipy
+soundfile
+sounddevice
+flask
+flask-socketio
+eventlet

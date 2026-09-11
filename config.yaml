@@ -1,0 +1,69 @@
+# IGARD-Net Configuration File
+# Tactical Real-Time Audio Noise Cancellation & Speech Enhancement
+
+audio:
+  sample_rate: 16000
+  frame_size: 256        # 256 samples @ 16 kHz = 16.0 ms per frame (target <50 ms total latency)
+  hop_size: 128
+  channels: 1
+  bit_depth: 16
+
+nlms:
+  taps: 64
+  initial_mu: 0.25
+  epsilon: 1.0e-6
+  leakage: 0.9999
+  adaptation_enabled: true
+
+gqpso:
+  enabled: true
+  num_particles: 8
+  iterations: 5
+  interval_s: 1.0        # Asynchronous background retuning interval in seconds
+  history_samples: 1024  # History window size for optimization fitness
+  search_min: 0.01
+  search_max: 1.5
+  mutation_prob: 0.1
+
+presence_gate:
+  threshold_margin: 2.5
+  calibration_blocks: 20
+  initial_floor: 1.0e-5
+  hysteresis_db: 2.0
+
+classifier:
+  confidence_threshold: 0.60
+  onset_threshold: 0.01
+
+wiener:
+  enabled: true
+  gate_strength: 1.4
+  min_gain: 0.08         # Gain floor prevents harsh musical noise
+  smoothing_factor: 0.85
+
+voice_protection:
+  enabled: true
+  speech_gain_floor_db: -18.0  # Safeguard: never attenuate speech past -18 dB relative to input
+  compressor_threshold_db: -6.0
+  compressor_ratio: 3.0
+  attack_ms: 5.0
+  release_ms: 40.0
+  makeup_gain_db: 1.5
+
+accelerometer:
+  shock_threshold: 0.5
+  agreement_boost: 0.25
+  hardware_bus: 1
+
+autopilot:
+  enabled: true
+
+dashboard:
+  telemetry_fps: 20
+  host: "0.0.0.0"
+  port: 5000
+
+hardware:
+  profile: "auto"        # "auto", "DESKTOP_NVIDIA", "JETSON_NANO", "CPU_ONLY"
+  cuda_device_id: 0
+  allow_cpu_fallback: true
