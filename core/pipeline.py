@@ -84,15 +84,20 @@ class IgardNetPipeline:
 
         # 3. Speech Protection Controller
         sp_cfg = self.config.get("speech_protection", {})
+        track_cfg = self.config.get("speech_tracking", {})
         self.speech_protection = SpeechProtectionController(
             sample_rate=self.sample_rate,
             frame_size=self.frame_size,
-            high_speech_thresh=sp_cfg.get("high_speech_thresh", 0.75),
-            low_speech_thresh=sp_cfg.get("low_speech_thresh", 0.45),
-            attack_ms=sp_cfg.get("attack_ms", 12.0),
-            release_ms=sp_cfg.get("release_ms", 120.0),
-            hold_ms=sp_cfg.get("hold_ms", 150.0),
+            threshold_on=track_cfg.get("threshold_on", 0.60),
+            threshold_off=track_cfg.get("threshold_off", 0.40),
+            high_speech_thresh=sp_cfg.get("high_speech_thresh", 0.60),
+            low_speech_thresh=sp_cfg.get("low_speech_thresh", 0.40),
+            attack_ms=track_cfg.get("attack_ms", 10.0),
+            release_ms=track_cfg.get("release_ms", 150.0),
+            hold_ms=track_cfg.get("hold_ms", 120.0),
             default_suppression=sp_cfg.get("default_suppression", 0.75),
+            minimum_voice_gain=sp_cfg.get("minimum_voice_gain", 0.55),
+            background_attenuation_floor=sp_cfg.get("background_attenuation_floor", 0.15),
         )
 
         # 4. Gain Smoother and Peak Limiter
@@ -102,7 +107,7 @@ class IgardNetPipeline:
             attack_ms=10.0,
             release_ms=80.0,
             max_delta_per_frame=0.08,
-            min_gain=0.01,
+            min_gain=0.15,
         )
 
         # 5. Acoustic Presence & Classifier (for telemetry labels)
@@ -120,6 +125,10 @@ class IgardNetPipeline:
         self._block_count: int = 0
         self._last_out_sample: Optional[float] = None
         self._snr_ema: float = 0.0
+        self._last_noise_label: str = "ambient"
+        self._last_confidence: float = 0.85
+        self._last_mos: float = 4.0
+        self._heavy_metric_interval: int = 12
 
     def process_block(
         self,
@@ -149,8 +158,7 @@ class IgardNetPipeline:
         if self.sample_rate == 16000:
             speech_prob = self.silero_vad.process_chunk(primary)
         else:
-            # Downsample to 16 kHz for VAD
-            vad_in = signal.resample_poly(primary, 16000, self.sample_rate)
+            vad_in = primary[::3] if self.sample_rate == 48000 else signal.resample_poly(primary, 16000, self.sample_rate)
             speech_prob = self.silero_vad.process_chunk(vad_in)
 
         # Stage 2: RNNoise Suppression (48 kHz native C engine)
@@ -163,11 +171,14 @@ class IgardNetPipeline:
             # Resample back to pipeline sample rate
             rnnoise_out = signal.resample_poly(rnnoise_out_48k, self.sample_rate, 48000)[:n_samples]
 
+        # Fast speech onset fusion
+        effective_sp = max(speech_prob, 0.70 if rnnoise_vad >= 0.80 and speech_prob >= 0.25 else speech_prob)
+
         # Stage 3: Speech Protection Controller (Enforces preservation & collapse guard)
         protected_audio, telem = self.speech_protection.protect(
             raw_frame=primary,
             suppressed_frame=rnnoise_out,
-            speech_probability=speech_prob,
+            speech_probability=effective_sp,
             rnnoise_vad=rnnoise_vad,
         )
 
@@ -192,15 +203,28 @@ class IgardNetPipeline:
         snr_delta = float(np.clip(enh_snr - raw_snr, -30.0, 30.0))
         self._snr_ema = 0.90 * self._snr_ema + 0.10 * snr_delta
 
-        # Acoustic classification (non-blocking)
-        noise_label, raw_confidence = self.classifier.classify(reference)
-        shock_score = float(self.accelerometer.read_recent_shock_score())
-        confidence = cross_check_confidence(
-            acoustic_label=noise_label,
-            acoustic_confidence=raw_confidence,
-            shock_score=shock_score,
-            shock_threshold=self.shock_threshold,
-        )
+        # Downsampled acoustic classification & MOS estimation to keep DSP latency ultra-low (<1.5ms)
+        if (self._block_count % self._heavy_metric_interval == 0):
+            self._last_noise_label, raw_conf = self.classifier.classify(reference)
+            shock_score = float(self.accelerometer.read_recent_shock_score())
+            self._last_confidence = float(cross_check_confidence(
+                acoustic_label=self._last_noise_label,
+                acoustic_confidence=raw_conf,
+                shock_score=shock_score,
+                shock_threshold=self.shock_threshold,
+            ))
+            self._last_mos = float(self.mos_estimator.estimate_frame_mos(
+                primary_block=primary,
+                enhanced_block=output_audio,
+                speech_prob=float(telem["speech_probability"]),
+                snr_delta=float(self._snr_ema),
+            ))
+        else:
+            shock_score = float(self.accelerometer.read_recent_shock_score())
+
+        noise_label = self._last_noise_label
+        confidence = self._last_confidence
+        estimated_mos = self._last_mos
         shock_confirmed = (noise_label == "impulsive") and (shock_score >= self.shock_threshold)
 
         t_proc_ms = (time.perf_counter() - t_start) * 1000.0
@@ -211,14 +235,6 @@ class IgardNetPipeline:
         self.state.speech_prob = float(telem["speech_probability"])
         self.state.noise_confidence = float(telem["suppression_strength"])
         self.state.snr_delta = float(self._snr_ema)
-
-        # Objective MOS calculation
-        estimated_mos = self.mos_estimator.estimate_frame_mos(
-            primary_block=primary,
-            enhanced_block=output_audio,
-            speech_prob=float(telem["speech_probability"]),
-            snr_delta=float(self._snr_ema),
-        )
         self.state.estimated_mos = float(estimated_mos)
 
         status_text = telem["status"]
@@ -253,35 +269,101 @@ class IgardNetPipeline:
         primary: np.ndarray,
         reference: Optional[np.ndarray] = None,
         block_size: Optional[int] = None,
+        progress_callback: Optional[Any] = None,
     ) -> Tuple[np.ndarray, list]:
         """
-        Batch process an audio stream sequentially in contiguous blocks using
-        the EXACT same V3 processing logic as real-time mode.
+        High-throughput V4 continuous stream processing.
+        Follows Section 20: Unified internal audio flow at 48 kHz with one controlled
+        branch for Silero VAD at 16 kHz. Resamples once on input and once on output.
         """
-        bs = block_size if block_size is not None else self.frame_size
-        n = len(primary)
-        if reference is None:
-            reference = np.random.normal(0, 0.01, n).astype(np.float32)
+        n_in = len(primary)
+        if n_in == 0:
+            return np.zeros(0, dtype=np.float32), []
 
-        out_audio = np.empty(n, dtype=np.float32)
+        self.reset()
+        from audio.resampler import resample_audio
+        orig_sr = self.sample_rate
+
+        if orig_sr != 48000:
+            p_48k = resample_audio(primary, orig_sr, 48000).astype(np.float32)
+        else:
+            p_48k = np.asarray(primary, dtype=np.float32)
+
+        frame_size_48k = 480
+        n_frames = len(p_48k) // frame_size_48k
+        out_48k = np.empty(len(p_48k), dtype=np.float32)
         telemetry_log = []
+        last_out_sample = None
 
-        for idx in range(0, n, bs):
-            end = min(idx + bs, n)
-            p_chunk = primary[idx:end]
-            r_chunk = reference[idx:end]
+        controller_48k = SpeechProtectionController(
+            sample_rate=48000,
+            frame_size=frame_size_48k,
+            threshold_on=0.60,
+            threshold_off=0.40,
+            attack_ms=10.0,
+            hold_ms=120.0,
+            release_ms=150.0,
+            default_suppression=0.75,
+            minimum_voice_gain=0.55,
+            background_attenuation_floor=0.15,
+        )
+        controller_48k.autopilot = bool(self.state.autopilot)
+        smoother_48k = GainSmoother(
+            sample_rate=48000,
+            frame_size=frame_size_48k,
+            attack_ms=10.0,
+            release_ms=80.0,
+            max_delta_per_frame=0.08,
+            min_gain=0.15,
+        )
 
-            if len(p_chunk) < bs:
-                pad_len = bs - len(p_chunk)
-                p_pad = np.pad(p_chunk, (0, pad_len))
-                r_pad = np.pad(r_chunk, (0, pad_len))
-                res = self.process_block(p_pad, r_pad)
-                out_audio[idx:end] = res["audio"][: end - idx]
-            else:
-                res = self.process_block(p_chunk, r_chunk)
-                out_audio[idx:end] = res["audio"]
+        for i in range(n_frames):
+            chunk_48k = p_48k[i * frame_size_48k : (i + 1) * frame_size_48k]
 
-            telemetry_log.append({k: v for k, v in res.items() if k not in ("audio", "raw_audio", "processed_audio")})
+            # Controlled branch for Silero VAD (48k -> 16k: 480 samples -> 160 samples)
+            chunk_16k = chunk_48k[::3]
+            sp_prob = self.silero_vad.process_chunk(chunk_16k)
+
+            # Native RNNoise suppression (480 samples @ 48 kHz)
+            supp_48k, rnn_vad = self.rnnoise.process_frame(chunk_48k)
+
+            # Fast speech onset fusion
+            effective_sp = max(sp_prob, 0.70 if rnn_vad >= 0.80 and sp_prob >= 0.25 else sp_prob)
+
+            # Speech Protection Controller
+            prot_48k, telem = controller_48k.protect(
+                raw_frame=chunk_48k,
+                suppressed_frame=supp_48k,
+                speech_probability=effective_sp,
+                rnnoise_vad=rnn_vad,
+            )
+
+            # Gain smoothing & peak limiter
+            smooth_48k = smoother_48k.smooth_boundary(prot_48k, last_out_sample)
+            final_48k = GainSmoother.soft_limit(smooth_48k, ceiling=0.95)
+            last_out_sample = float(final_48k[-1])
+
+            out_48k[i * frame_size_48k : (i + 1) * frame_size_48k] = final_48k
+            telemetry_log.append(telem)
+
+            if progress_callback and (i % 25 == 0 or i == n_frames - 1):
+                try:
+                    progress_callback((i + 1) / n_frames, telem.get("status", "Processing"))
+                except Exception:
+                    pass
+
+        rem = len(p_48k) % frame_size_48k
+        if rem > 0:
+            tail = p_48k[n_frames * frame_size_48k :]
+            pad_tail = np.zeros(frame_size_48k, dtype=np.float32)
+            pad_tail[:rem] = tail
+            supp_tail, rnn_vad = self.rnnoise.process_frame(pad_tail)
+            out_48k[n_frames * frame_size_48k :] = supp_tail[:rem]
+
+        if orig_sr != 48000:
+            out_audio = resample_audio(out_48k, 48000, orig_sr).astype(np.float32)[:n_in]
+        else:
+            out_audio = out_48k[:n_in]
 
         return out_audio, telemetry_log
 
@@ -291,9 +373,13 @@ class IgardNetPipeline:
         self.rnnoise.reset()
         self.speech_protection.reset()
         self.gain_smoother.reset(1.0)
+        self.presence_gate.recalibrate()
         self._last_out_sample = None
         self._block_count = 0
         self._snr_ema = 0.0
+        self._last_noise_label = "ambient"
+        self._last_confidence = 0.85
+        self._last_mos = 4.0
 
     def close(self):
         """Cleanly releases all C/native resources."""

@@ -106,49 +106,19 @@ class FileProcessor:
         audio_duration_s = total_samples / self.target_sr
 
         # Stage 3 & 4: Process Audio at Maximum Computational Throughput
-        cleaned_output = np.empty(total_samples, dtype=np.float64)
-        
-        # Reset presence gate and stateful modules for the file
-        if hasattr(pipeline, "reset"):
-            pipeline.reset()
-        if hasattr(pipeline, "presence_gate") and hasattr(pipeline.presence_gate, "recalibrate"):
-            pipeline.presence_gate.recalibrate()
+        def stream_progress(frac: float, msg: str):
+            cur_prog = 15.0 + frac * 68.0
+            stage_idx = 3 if frac < 0.55 else 4
+            stage_msg = f"AI Voice-Preserving Suppression ({int(frac*100)}%): {msg}"
+            report(cur_prog, stage_msg, stage_idx)
 
-        last_report_t = time.perf_counter()
-        speech_frame_count = 0
-        total_blocks = total_samples // self.block_size + (1 if total_samples % self.block_size else 0)
-
-        for b_idx, start in enumerate(range(0, total_samples, self.block_size)):
-            end = min(start + self.block_size, total_samples)
-            p_block = primary[start:end]
-            r_block = reference[start:end]
-
-            if len(p_block) < self.block_size:
-                pad = self.block_size - len(p_block)
-                p_pad = np.pad(p_block, (0, pad))
-                r_pad = np.pad(r_block, (0, pad))
-                res = pipeline.process_block(p_pad, r_pad)
-                cleaned_output[start:end] = res["audio"][: end - start]
-            else:
-                res = pipeline.process_block(p_block, r_block)
-                cleaned_output[start:end] = res["audio"]
-
-            if res.get("speech_prob", 0.0) >= 0.50:
-                speech_frame_count += 1
-
-            # Update progress throttled every 50ms or at boundaries
-            now_t = time.perf_counter()
-            if (now_t - last_report_t >= 0.05) or (b_idx == total_blocks - 1):
-                last_report_t = now_t
-                frac = end / total_samples
-                cur_prog = 15.0 + frac * 68.0  # Range 15% -> 83%
-                if frac < 0.55:
-                    stage_idx = 3
-                    stage_msg = f"Cancelling Background Noise & Babble (NLMS Frame {b_idx}/{total_blocks})..."
-                else:
-                    stage_idx = 4
-                    stage_msg = f"Preserving Voice Formants & OLA Spectral Masking ({b_idx}/{total_blocks})..."
-                report(cur_prog, stage_msg, stage_idx)
+        cleaned_output, telem_log = pipeline.process_stream(
+            primary=primary,
+            reference=reference,
+            progress_callback=stream_progress,
+        )
+        speech_frame_count = sum(1 for t in telem_log if t.get("speech_probability", 0.0) >= 0.50)
+        total_blocks = max(1, len(telem_log))
 
         t_end = time.perf_counter()
         proc_time_s = t_end - t_start

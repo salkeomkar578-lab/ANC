@@ -9,18 +9,21 @@ audio:
   bit_depth: 16
 
 speech_tracking:
-  attack_ms: 20.0
-  release_ms: 120.0
-  hold_ms: 100.0
-  hysteresis: 0.08
+  threshold_on: 0.60
+  threshold_off: 0.40
+  attack_ms: 10.0
+  release_ms: 150.0
+  hold_ms: 120.0
+  hysteresis: 0.20
 
 speech_protection:
   enabled: true
-  probability_threshold: 0.65
+  high_speech_thresh: 0.60
+  low_speech_thresh: 0.40
   minimum_voice_gain: 0.55
-  uncertain_voice_gain: 0.70
-  max_suppression_db: 12.0
-  noise_suppression_floor_db: 40.0
+  background_attenuation_floor: 0.15
+  default_suppression: 0.75
+  max_suppression_db: 20.0
 
 safety_limits:
   max_suppression_db: 12.0

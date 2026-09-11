@@ -6,6 +6,7 @@ Processes 48 kHz mono audio in 480-sample (10 ms) frames with persistent GRU sta
 
 import ctypes
 import os
+import threading
 from typing import Tuple, Optional, Union
 import numpy as np
 
@@ -57,6 +58,7 @@ class RNNoiseProcessor:
     SAMPLE_RATE = 48000
 
     def __init__(self):
+        self._lock = threading.Lock()
         self._state: Optional[ctypes.c_void_p] = lib.rnnoise_create(None)
         if not self._state:
             raise RuntimeError("Failed to allocate RNNoise C state.")
@@ -74,10 +76,11 @@ class RNNoiseProcessor:
 
     def reset(self) -> None:
         """Reset RNNoise internal recurrent states."""
-        if self._state is not None:
-            lib.rnnoise_destroy(self._state)
-        self._state = lib.rnnoise_create(None)
-        self._last_vad = 0.0
+        with self._lock:
+            if self._state is not None:
+                lib.rnnoise_destroy(self._state)
+            self._state = lib.rnnoise_create(None)
+            self._last_vad = 0.0
 
     def process_frame(self, frame_48k: np.ndarray) -> Tuple[np.ndarray, float]:
         """
@@ -90,16 +93,17 @@ class RNNoiseProcessor:
                 f"RNNoise frame must be exactly {self.FRAME_SIZE} samples, got {len(frame_48k)}"
             )
 
-        # Scale float [-1.0, 1.0] to RNNoise internal PCM amplitude [-32767.0, 32767.0]
-        np.multiply(frame_48k, 32767.0, out=self._work_buffer)
+        with self._lock:
+            # Scale float [-1.0, 1.0] to RNNoise internal PCM amplitude [-32767.0, 32767.0]
+            np.multiply(frame_48k, 32767.0, out=self._work_buffer)
 
-        # In-place C processing (fast zero-copy)
-        vad_prob = float(lib.rnnoise_process_frame(self._state, self._ptr, self._ptr))
+            # In-place C processing (fast zero-copy)
+            vad_prob = float(lib.rnnoise_process_frame(self._state, self._ptr, self._ptr))
 
-        # Scale back to normalized float32
-        out_frame = self._work_buffer / 32767.0
-        self._last_vad = vad_prob
-        return out_frame, vad_prob
+            # Scale back to normalized float32
+            out_frame = self._work_buffer.copy() / 32767.0
+            self._last_vad = vad_prob
+            return out_frame, vad_prob
 
     def process_chunk(self, audio_48k: np.ndarray) -> Tuple[np.ndarray, float]:
         """
