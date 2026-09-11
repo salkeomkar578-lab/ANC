@@ -38,6 +38,9 @@ class TestRealtimeStreaming(unittest.TestCase):
 
     def test_realtime_latency_bound(self):
         """Verifies that DSP frame processing latency is strictly < 15ms per 256-sample block (<50ms total)."""
+        # Warm-up block to exclude ONNX session kernel initialization
+        self.pipeline.process_block(np.zeros(256, dtype=np.float32), np.zeros(256, dtype=np.float32))
+
         latencies = []
         for _ in range(50):
             p = np.random.randn(256) * 0.1
