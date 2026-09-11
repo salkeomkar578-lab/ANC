@@ -5,7 +5,7 @@ frame-to-frame gain delta. Eliminates pumping, clicking, popping, and sudden
 attenuation artifacts.
 """
 
-from typing import Union
+from typing import Union, Optional
 import numpy as np
 
 
@@ -86,3 +86,40 @@ class GainSmoother:
 
         self._current_vector_gain = np.clip(smoothed, self.min_gain, 1.0)
         return self._current_vector_gain
+
+    @staticmethod
+    def soft_limit(audio: np.ndarray, ceiling: float = 0.95) -> np.ndarray:
+        """
+        Soft-knee peak limiter to prevent digital clipping while preserving
+        natural audio dynamics and transient punch.
+        """
+        arr = np.asarray(audio, dtype=np.float32)
+        peak = float(np.max(np.abs(arr))) if len(arr) > 0 else 0.0
+        if peak <= ceiling:
+            return arr
+
+        # Hyperbolic tangent soft compression above ceiling
+        knee_start = ceiling * 0.85
+        mask = np.abs(arr) > knee_start
+        if not np.any(mask):
+            return arr
+
+        out = arr.copy()
+        exceed = np.abs(arr[mask]) - knee_start
+        headroom = ceiling - knee_start
+        compressed = knee_start + headroom * np.tanh(exceed / max(1e-6, headroom))
+        out[mask] = np.sign(arr[mask]) * compressed
+        return out
+
+    def smooth_boundary(self, frame: np.ndarray, last_sample: Optional[float], ramp_len: int = 16) -> np.ndarray:
+        """
+        Cross-fades frame boundaries to eliminate clicks and ticks.
+        """
+        if last_sample is None or len(frame) < ramp_len:
+            return frame
+        step = float(last_sample - frame[0])
+        if abs(step) > 0.015:
+            ramp = np.linspace(1.0, 0.0, ramp_len, dtype=frame.dtype)
+            frame[:ramp_len] += step * ramp
+        return frame
+

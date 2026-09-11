@@ -1329,4 +1329,138 @@ audio {
   padding: 10px;
 }
 
+/* ================================================================= */
+/* IGARD-Net V3 HUD Styling                                          */
+/* ================================================================= */
+.v3-metrics-grid {
+  grid-template-columns: repeat(4, 1fr) !important;
+  gap: 16px !important;
+  margin-bottom: 20px !important;
+}
+
+@media (max-width: 1100px) {
+  .v3-metrics-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+}
+
+@media (max-width: 600px) {
+  .v3-metrics-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+.text-glow-emerald {
+  color: #00e676 !important;
+  text-shadow: 0 0 12px rgba(0, 230, 118, 0.6) !important;
+}
+
+.progress-bar-container {
+  width: 100%;
+  height: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 4px;
+  overflow: hidden;
+  margin: 8px 0;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #00f0ff, #0088ff);
+  box-shadow: 0 0 8px rgba(0, 240, 255, 0.6);
+  transition: width 0.1s ease-out;
+}
+
+.progress-bar-fill.emerald {
+  background: linear-gradient(90deg, #00e676, #00b0ff);
+  box-shadow: 0 0 8px rgba(0, 230, 118, 0.6);
+}
+
+.metric-levels-row {
+  display: flex;
+  gap: 12px;
+  margin: 6px 0;
+}
+
+.level-box {
+  flex: 1;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: var(--radius-sm);
+  padding: 6px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.level-lbl {
+  font-size: 10px;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+.level-val {
+  font-size: 16px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  color: #fff;
+}
+
+/* V3 Tactical Control Strip */
+.v3-control-strip {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  background: rgba(12, 18, 30, 0.85);
+  border: 1px solid rgba(0, 240, 255, 0.2);
+  border-radius: var(--radius-md);
+  padding: 12px 20px;
+  margin-bottom: 20px;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+  flex-wrap: wrap;
+}
+
+.control-strip-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.control-strip-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-muted);
+  letter-spacing: 0.05em;
+}
+
+.control-strip-group.slider-group {
+  flex: 1;
+  min-width: 240px;
+}
+
+.control-strip-group.slider-group input[type="range"] {
+  flex: 1;
+  accent-color: #00f0ff;
+  cursor: pointer;
+}
+
+.badge-auto {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  background: rgba(0, 240, 255, 0.15);
+  color: #00f0ff;
+  border: 1px solid rgba(0, 240, 255, 0.4);
+  border-radius: 4px;
+  padding: 2px 6px;
+}
+
+.visual-panel.full-width {
+  grid-column: 1 / -1;
+}
+
+
 

@@ -132,9 +132,26 @@ def api_toggle_autopilot():
     data = request.get_json(silent=True) or {}
     enabled = data.get("enabled", not state.autopilot)
     state.set_autopilot(enabled)
+    if hasattr(pipeline, "speech_protection"):
+        pipeline.speech_protection.autopilot = bool(enabled)
     return jsonify({
         "status": "ok",
         "autopilot": state.autopilot,
+    })
+
+
+@app.route("/api/mode/set_suppression", methods=["POST"])
+def api_set_suppression():
+    data = request.get_json(silent=True) or {}
+    val = float(data.get("suppression", 0.75))
+    if hasattr(pipeline, "speech_protection"):
+        pipeline.speech_protection.manual_suppression = val
+        pipeline.speech_protection.autopilot = False
+    state.set_autopilot(False)
+    return jsonify({
+        "status": "ok",
+        "suppression": val,
+        "autopilot": False,
     })
 
 

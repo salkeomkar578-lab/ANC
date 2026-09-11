@@ -109,10 +109,10 @@ class FileProcessor:
         cleaned_output = np.empty(total_samples, dtype=np.float64)
         
         # Reset presence gate and stateful modules for the file
-        pipeline.presence_gate.recalibrate()
-        pipeline.speech_detector.reset()
-        pipeline.speech_protection.reset()
-        pipeline.cleanup.reset()
+        if hasattr(pipeline, "reset"):
+            pipeline.reset()
+        if hasattr(pipeline, "presence_gate") and hasattr(pipeline.presence_gate, "recalibrate"):
+            pipeline.presence_gate.recalibrate()
 
         last_report_t = time.perf_counter()
         speech_frame_count = 0

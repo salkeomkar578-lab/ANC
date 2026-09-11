@@ -77,178 +77,122 @@
     <!-- ================================================================= -->
     <!-- VIEW 1: 🔴 LIVE REAL-TIME DETECTION & STREAMING WORKSPACE         -->
     <!-- ================================================================= -->
+    <!-- ================================================================= -->
+    <!-- VIEW 1: 🔴 LIVE REAL-TIME DETECTION & STREAMING WORKSPACE (V3)     -->
+    <!-- ================================================================= -->
     <main id="liveDetectionView" class="view-workspace active">
 
       <!-- Dynamic Processing Status Banner -->
       <section class="status-banner" id="statusBanner">
         <div class="status-content">
           <div class="status-dot pulse" id="statusDot"></div>
-          <div class="status-text" id="statusText">System initialized &mdash; Real-time tactical stream running.</div>
+          <div class="status-text" id="statusText">SPEECH ACTIVE &bull; Speech Protected (RNNoise Active)</div>
         </div>
         <div class="status-meta" id="statusMeta">
-          Latency: -- ms &bull; Frame: 256 samples @ 16 kHz &bull; Backend: Initializing...
+          Latency: 2.4 ms &bull; Frame: 256 samples @ 16 kHz &bull; Backend: NVIDIA CUDA / CPU
         </div>
       </section>
 
-      <!-- Pipeline Signal Chain Flow Diagram -->
-      <section class="pipeline-section">
-        <div class="section-header">
-          <div class="section-title">
-            <span>◆</span> Pipeline Signal Chain Architecture &bull; Dynamic Stage Activation
-          </div>
-          <span class="metric-sub">Presence Gate &bull; Acoustic Classifier &bull; Cross-Modal Shock &bull; 64-Tap NLMS &bull; Async GQPSO &bull; OLA Wiener &bull; Dynamics</span>
-        </div>
-
-        <div class="pipeline-diagram">
-          <!-- Stage 0: Presence Gate -->
-          <div class="pipeline-stage active" id="stage0">
-            <div class="stage-num">[Stage 0] Presence Gate</div>
-            <div class="stage-name">Energy Baseline</div>
-            <div class="stage-desc">Bypasses pipeline during quiet periods; preserves speech purity.</div>
-            <div class="stage-badge" id="stage0Badge">CHECKING FLOOR</div>
-          </div>
-
-          <!-- Stage 1: Noise Classifier -->
-          <div class="pipeline-stage" id="stage1">
-            <div class="stage-num">[Stage 1] Classifier</div>
-            <div class="stage-name">Spectral Analysis</div>
-            <div class="stage-desc">8-feature DSP analysis: rolloff, peakiness, crest factor, onset.</div>
-            <div class="stage-badge" id="stage1Badge">STANDBY</div>
-          </div>
-
-          <!-- Stage 1b: Accelerometer Cross-Check -->
-          <div class="pipeline-stage" id="stage1b">
-            <div class="stage-num">[Stage 1b] Cross-Modal</div>
-            <div class="stage-name">Shock Sensor</div>
-            <div class="stage-desc">Confirms mechanical shock to suppress false acoustic gunshots.</div>
-            <div class="stage-badge" id="stage1bBadge">SCORE: 2%</div>
-          </div>
-
-          <!-- Stage 2: NLMS Adaptive Filter -->
-          <div class="pipeline-stage" id="stage2">
-            <div class="stage-num">[Stage 2] NLMS Filter</div>
-            <div class="stage-name">Adaptive Canceller</div>
-            <div class="stage-desc">64-tap normalized LMS FIR filter with leakage.</div>
-            <div class="stage-badge" id="stage2Badge">&mu; = 0.2500</div>
-          </div>
-
-          <!-- Stage 3: Quantum Tuner -->
-          <div class="pipeline-stage" id="stage3">
-            <div class="stage-num">[Stage 3] GQPSO Tuner</div>
-            <div class="stage-name">Quantum Auto-Tuner</div>
-            <div class="stage-desc">Async background swarm optimizes &mu; without stalling audio.</div>
-            <div class="stage-badge" id="stage3Badge">ASYNC RUNNING</div>
-          </div>
-
-          <!-- Stage 4 & 5: Confidence Gate & Wiener Cleanup -->
-          <div class="pipeline-stage" id="stage4">
-            <div class="stage-num">[Stage 4/5] Safety & Cleanup</div>
-            <div class="stage-name">OLA Wiener Masking</div>
-            <div class="stage-desc">50% overlap-add spectral soft masking with fail-safe bypass.</div>
-            <div class="stage-badge" id="stage5Badge">WIENER ON</div>
-          </div>
-
-          <!-- Stage 6: Speech Protection Gate & Dynamics -->
-          <div class="pipeline-stage" id="stage6">
-            <div class="stage-num">[Stage 6] Speech Protection</div>
-            <div class="stage-name">Voice Floor & Limiter</div>
-            <div class="stage-desc">Continuous hold, speech gain floor (min 0.55), zero hard mutes.</div>
-            <div class="stage-badge" id="stage6Badge">VOICE PROTECTED</div>
-          </div>
-        </div>
-      </section>
-
-      <!-- Real-Time Detection & Performance Cards Grid -->
-      <section class="metrics-grid">
-        <!-- Live Measured Latency -->
-        <div class="metric-card latency-card">
-          <div class="metric-header">
-            <span>End-to-End Latency</span>
-            <span class="metric-badge badge-latency" id="latencyBadge">Target &lt;50ms</span>
-          </div>
-          <div class="metric-value" id="metricLatency">-- ms</div>
-          <div class="metric-sub" id="metricLatencySub">Cap: -- | Proc: -- | Buffer: -- ms</div>
-        </div>
-
-        <!-- Live Estimated Speech Quality MOS Gauge -->
-        <div class="metric-card mos-card">
-          <div class="metric-header">
-            <span>Estimated Speech MOS</span>
-            <span class="metric-badge badge-mos" id="liveMosBadge">ITU-T P.835</span>
-          </div>
-          <div class="metric-value text-glow-cyan" id="liveMosValue">4.20</div>
-          <div class="metric-sub" id="liveMosSub">Objective Quality Score (1.0 &ndash; 5.0)</div>
-        </div>
-
-        <!-- Estimated SNR Improvement -->
-        <div class="metric-card">
-          <div class="metric-header">
-            <span>Estimated SNR Delta</span>
-            <span class="metric-badge badge-snr">Noise Attenuation</span>
-          </div>
-          <div class="metric-value" id="metricSnr">+0.0 dB</div>
-          <div class="metric-sub">Running exponential moving average</div>
-        </div>
-
-        <!-- Speech Probability & Voice Activity Detection -->
+      <!-- V3 Primary Telemetry HUD (Clean 4-Card Grid) -->
+      <section class="metrics-grid v3-metrics-grid">
+        <!-- 1. Silero Speech Probability -->
         <div class="metric-card speech-card">
           <div class="metric-header">
-            <span>Speech Presence (VAD)</span>
-            <span class="metric-badge badge-snr" id="speechBadge">Voice Protected</span>
+            <span>Speech Probability</span>
+            <span class="metric-badge badge-snr" id="speechBadge">Silero VAD ONNX</span>
           </div>
-          <div class="metric-value" id="metricSpeech">-- %</div>
-          <div class="metric-sub" id="metricSpeechSub">Continuous hold &bull; Floor: 0.55 &bull; 0 Mutes</div>
+          <div class="metric-value text-glow-cyan" id="metricSpeech">91%</div>
+          <div class="progress-bar-container">
+            <div class="progress-bar-fill" id="speechProbBar" style="width: 91%;"></div>
+          </div>
+          <div class="metric-sub" id="metricSpeechSub">Continuous Speech Confidence &bull; Non-Gating</div>
         </div>
 
-        <!-- Quantum Tuned Step Size -->
-        <div class="metric-card">
+        <!-- 2. RNNoise Suppression Strength -->
+        <div class="metric-card noise-card">
           <div class="metric-header">
-            <span>NLMS Step Size (&mu;)</span>
-            <span class="metric-badge badge-quantum">Async GQPSO</span>
+            <span>Noise Suppression</span>
+            <span class="metric-badge badge-quantum" id="suppressionBadge">RNNoise Native</span>
           </div>
-          <div class="metric-value" id="metricStep">0.2500</div>
-          <div class="metric-sub">Optimized in background; zero audio jitter</div>
+          <div class="metric-value text-glow-emerald" id="metricSuppression">78%</div>
+          <div class="progress-bar-container">
+            <div class="progress-bar-fill emerald" id="suppressionBar" style="width: 78%;"></div>
+          </div>
+          <div class="metric-sub" id="metricSuppressionSub">Adaptive Attenuation &bull; Voice Timbre Guard</div>
         </div>
 
-        <!-- Hardware Resource Utilization -->
-        <div class="metric-card">
+        <!-- 3. Acoustic Signal Levels (Raw vs Enhanced RMS) -->
+        <div class="metric-card levels-card">
           <div class="metric-header">
-            <span>Hardware Utilization</span>
-            <span class="metric-badge" id="hwProfileBadge">CPU / GPU</span>
+            <span>Signal Levels (RMS)</span>
+            <span class="metric-badge" id="levelDeltaBadge">SNR Delta: +4.2 dB</span>
           </div>
-          <div class="metric-value" id="metricHw">CPU: 0%</div>
-          <div class="metric-sub" id="metricHwSub">GPU: 0% &bull; RAM: 0 MB</div>
+          <div class="metric-levels-row">
+            <div class="level-box">
+              <span class="level-lbl">RAW RMS</span>
+              <span class="level-val" id="metricRawRms">-18 dB</span>
+            </div>
+            <div class="level-box">
+              <span class="level-lbl">ENHANCED RMS</span>
+              <span class="level-val text-glow-emerald" id="metricEnhRms">-20 dB</span>
+            </div>
+          </div>
+          <div class="metric-sub" id="metricLevelSub">Zero Volume Collapse Guarantee</div>
         </div>
 
-        <!-- Frames & Reliability -->
-        <div class="metric-card">
+        <!-- 4. Real-Time Hardware & Stream Telemetry -->
+        <div class="metric-card latency-card">
           <div class="metric-header">
-            <span>Stream Reliability</span>
-            <span class="metric-badge">Frames Active</span>
+            <span>Latency &amp; System</span>
+            <span class="metric-badge badge-latency" id="latencyBadge">Target &lt;15ms</span>
           </div>
-          <div class="metric-value" id="metricFrames">0</div>
-          <div class="metric-sub" id="metricDropped">Drops: 0 &bull; Underruns: 0</div>
+          <div class="metric-value" id="metricLatency">2.4 ms</div>
+          <div class="metric-sub" id="metricHwTelemetry">CPU: 19% &bull; Dropped: 0 &bull; RAM: 150 MB</div>
         </div>
       </section>
 
-      <!-- Visual Inspection: Dual Synchronized Waveforms & Spectrograms -->
+      <!-- V3 Tactical Control Strip -->
+      <section class="v3-control-strip">
+        <div class="control-strip-group">
+          <span class="control-strip-label">AUDITION:</span>
+          <button id="v3BeforeAfterBtn" class="btn btn-ba active" title="Switch between Raw input and Enhanced output">
+            <span class="ba-indicator">●</span> <strong id="v3BaLabel">AFTER (Enhanced Voice)</strong>
+          </button>
+        </div>
+
+        <div class="control-strip-group">
+          <span class="control-strip-label">MODE:</span>
+          <button id="v3AutopilotBtn" class="btn btn-autopilot active" title="Toggle automatic suppression adaptation">
+            <span>⚙</span> AUTOPILOT: <strong id="v3AutopilotLabel">ON</strong>
+          </button>
+        </div>
+
+        <div class="control-strip-group slider-group">
+          <span class="control-strip-label">SUPPRESSION:</span>
+          <span id="suppressionModeText" class="badge-auto">AUTO</span>
+          <input type="range" id="suppressionSlider" min="0" max="100" value="78" disabled title="Adjust manual suppression strength when Autopilot is OFF">
+          <span id="suppressionSliderVal">78%</span>
+        </div>
+      </section>
+
+      <!-- Visual Inspection: Dual Synchronized Waveforms -->
       <section class="visuals-grid">
-        <!-- Before / After Waveform Oscilloscope -->
-        <div class="visual-panel">
+        <!-- Dual Waveform Oscilloscope -->
+        <div class="visual-panel full-width">
           <div class="section-header">
             <div class="section-title">
-              <span>◈</span> Before / After Waveform Oscilloscope
+              <span>◈</span> Real-Time Oscilloscope &bull; RAW vs ENHANCED Waveform
             </div>
-            <span class="metric-sub">Decimated real-time time-domain trace</span>
+            <span class="metric-sub">Synchronized time-domain envelope &bull; Anti-Ticking Verification</span>
           </div>
 
           <div class="canvas-container">
-            <span class="canvas-label label-input">Raw Primary Input (Speech + Drone + Bursts)</span>
+            <span class="canvas-label label-input">RAW INPUT (Microphone / Scenario Audio)</span>
             <canvas id="inputWaveCanvas"></canvas>
           </div>
 
           <div class="canvas-container">
-            <span class="canvas-label label-output">IGARD-Net Enhanced Voice Output</span>
+            <span class="canvas-label label-output">ENHANCED VOICE (RNNoise + Silero VAD Protection)</span>
             <canvas id="outputWaveCanvas"></canvas>
           </div>
         </div>

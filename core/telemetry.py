@@ -78,6 +78,7 @@ class TelemetryDispatcher:
             "noise_label": pipeline_result.get("noise_label", "standby"),
             "confidence": round(float(pipeline_result.get("confidence", 0.0)), 3),
             "speech_prob": round(float(pipeline_result.get("speech_prob", 0.0)), 3),
+            "suppression_strength": round(float(pipeline_result.get("suppression_strength", 0.75)), 3),
             "noise_prob": round(float(pipeline_result.get("noise_prob", 1.0)), 3),
             "estimated_mos": round(float(pipeline_result.get("estimated_mos", self.state.estimated_mos)), 2),
             "is_running": bool(self.state.is_running),

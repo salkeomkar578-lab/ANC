@@ -242,6 +242,76 @@
     }
   }
 
+  function updateBeforeAfterUI(isEnhanced) {
+    isBeforeAfterEnhanced = isEnhanced;
+    const btns = [document.getElementById('beforeAfterBtn'), document.getElementById('v3BeforeAfterBtn')];
+    const lbls = [document.getElementById('baLabel'), document.getElementById('v3BaLabel')];
+    btns.forEach(btn => {
+      if (!btn) return;
+      if (isEnhanced) {
+        btn.classList.add('active');
+      } else {
+        btn.classList.remove('active');
+      }
+    });
+    lbls.forEach(lbl => {
+      if (!lbl) return;
+      lbl.textContent = isEnhanced ? 'AFTER (Enhanced Voice)' : 'BEFORE (Raw Input)';
+    });
+  }
+
+  function updateAutopilotUI(isOn) {
+    isAutopilotOn = isOn;
+    const btns = [document.getElementById('autopilotBtn'), document.getElementById('v3AutopilotBtn')];
+    const lbls = [document.getElementById('autopilotLabel'), document.getElementById('v3AutopilotLabel')];
+    const slider = document.getElementById('suppressionSlider');
+    const modeText = document.getElementById('suppressionModeText');
+    btns.forEach(btn => {
+      if (!btn) return;
+      if (isOn) {
+        btn.classList.add('active');
+      } else {
+        btn.classList.remove('active');
+      }
+    });
+    lbls.forEach(lbl => {
+      if (!lbl) return;
+      lbl.textContent = isOn ? 'ON' : 'OFF';
+    });
+    if (slider) {
+      slider.disabled = isOn;
+      slider.style.opacity = isOn ? '0.5' : '1.0';
+    }
+    if (modeText) {
+      modeText.textContent = isOn ? 'AUTO' : 'MANUAL';
+      modeText.className = isOn ? 'badge-auto' : 'badge-latency';
+    }
+  }
+
+  async function toggleBeforeAfter() {
+    try {
+      const res = await fetch('/api/mode/toggle_before_after', { method: 'POST' });
+      if (res.ok) {
+        const data = await res.json();
+        updateBeforeAfterUI(data.before_after);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
+  async function toggleAutopilot() {
+    try {
+      const res = await fetch('/api/mode/toggle_autopilot', { method: 'POST' });
+      if (res.ok) {
+        const data = await res.json();
+        updateAutopilotUI(data.autopilot);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
   // --- Handle Telemetry Packet ---
   function handleTelemetryUpdate(data) {
     if (!data) return;
@@ -357,26 +427,68 @@
       }
     }
 
+    // 3. V3 Performance & Speech HUD Metrics
     const speechEl = document.getElementById('metricSpeech');
-    const speechSub = document.getElementById('metricSpeechSub');
+    const speechProbBar = document.getElementById('speechProbBar');
     const speechBadge = document.getElementById('speechBadge');
     if (speechEl && data.speech_prob !== undefined) {
       const probPct = Math.round(data.speech_prob * 100);
       speechEl.textContent = `${probPct}%`;
+      if (speechProbBar) {
+        speechProbBar.style.width = `${probPct}%`;
+      }
       if (speechBadge) {
-        if (data.speech_prob >= 0.50) {
+        if (data.speech_prob >= 0.75) {
           speechBadge.className = 'metric-badge badge-snr';
-          speechBadge.textContent = 'Voice Active';
-          speechEl.style.color = 'var(--accent-cyan)';
+          speechBadge.textContent = 'SPEECH ACTIVE';
+          speechEl.className = 'metric-value text-glow-emerald';
+        } else if (data.speech_prob >= 0.45) {
+          speechBadge.className = 'metric-badge badge-latency';
+          speechBadge.textContent = 'TRANSITION';
+          speechEl.className = 'metric-value text-glow-cyan';
         } else {
           speechBadge.className = 'metric-badge';
-          speechBadge.textContent = 'Guarded';
-          speechEl.style.color = 'var(--text-primary)';
+          speechBadge.textContent = 'NOISE SUPPRESSION';
+          speechEl.className = 'metric-value';
         }
       }
-      if (speechSub) {
-        speechSub.textContent = `Noise: ${Math.round(data.noise_prob * 100)}% • Floor: 0.55 • No Mute`;
-      }
+    }
+
+    const suppEl = document.getElementById('metricSuppression');
+    const suppBar = document.getElementById('suppressionBar');
+    const suppVal = data.suppression_strength !== undefined ? data.suppression_strength : 0.75;
+    const suppPct = Math.round(suppVal * 100);
+    if (suppEl) {
+      suppEl.textContent = `${suppPct}%`;
+    }
+    if (suppBar) {
+      suppBar.style.width = `${suppPct}%`;
+    }
+
+    // RMS Levels in dB
+    const rawRmsEl = document.getElementById('metricRawRms');
+    const enhRmsEl = document.getElementById('metricEnhRms');
+    const deltaBadge = document.getElementById('levelDeltaBadge');
+    if (rawRmsEl && data.primary_level !== undefined) {
+      const rawDb = 20 * Math.log10(Math.max(1e-4, data.primary_level));
+      rawRmsEl.textContent = `${rawDb.toFixed(0)} dB`;
+    }
+    if (enhRmsEl && data.output_level !== undefined) {
+      const enhDb = 20 * Math.log10(Math.max(1e-4, data.output_level));
+      enhRmsEl.textContent = `${enhDb.toFixed(0)} dB`;
+    }
+    if (deltaBadge && data.snr_delta !== undefined) {
+      const sign = data.snr_delta >= 0 ? '+' : '';
+      deltaBadge.textContent = `SNR Delta: ${sign}${data.snr_delta.toFixed(1)} dB`;
+    }
+
+    // Hardware Telemetry
+    const hwTelemEl = document.getElementById('metricHwTelemetry');
+    if (hwTelemEl) {
+      const cpu = data.cpu_percent !== undefined ? data.cpu_percent.toFixed(0) : '0';
+      const drops = data.dropped_frames !== undefined ? data.dropped_frames : 0;
+      const ram = data.ram_mb !== undefined ? data.ram_mb.toFixed(0) : '0';
+      hwTelemEl.textContent = `CPU: ${cpu}% • Dropped: ${drops} • RAM: ${ram} MB`;
     }
 
     // 4. Dual VU Meters
@@ -1160,6 +1272,100 @@
           baToggleBtn.style.borderColor = '#00f0ff';
         }
       };
+    }
+  }
+
+  // --- Setup Dashboard Control Handlers ---
+  function setupControls() {
+    const startBtn = document.getElementById('startBtn');
+    if (startBtn) {
+      startBtn.addEventListener('click', async () => {
+        try {
+          await fetch('/api/start_live', { method: 'POST' });
+          updateStreamButtonState(true);
+        } catch (e) {
+          console.error(e);
+        }
+      });
+    }
+
+    const stopBtn = document.getElementById('stopBtn');
+    if (stopBtn) {
+      stopBtn.addEventListener('click', async () => {
+        try {
+          await fetch('/api/stop', { method: 'POST' });
+          updateStreamButtonState(false);
+        } catch (e) {
+          console.error(e);
+        }
+      });
+    }
+
+    // Before/After buttons
+    const baBtns = [document.getElementById('beforeAfterBtn'), document.getElementById('v3BeforeAfterBtn')];
+    baBtns.forEach(btn => {
+      if (btn) btn.addEventListener('click', toggleBeforeAfter);
+    });
+
+    // Autopilot buttons
+    const apBtns = [document.getElementById('autopilotBtn'), document.getElementById('v3AutopilotBtn')];
+    apBtns.forEach(btn => {
+      if (btn) btn.addEventListener('click', toggleAutopilot);
+    });
+
+    // Suppression slider
+    const slider = document.getElementById('suppressionSlider');
+    const sliderVal = document.getElementById('suppressionSliderVal');
+    if (slider) {
+      slider.addEventListener('input', (e) => {
+        const val = e.target.value;
+        if (sliderVal) sliderVal.textContent = val + '%';
+      });
+      slider.addEventListener('change', async (e) => {
+        const val = parseFloat(e.target.value) / 100.0;
+        try {
+          await fetch('/api/mode/set_suppression', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ suppression: val })
+          });
+        } catch (err) {
+          console.error(err);
+        }
+      });
+    }
+
+    // Recalibrate button
+    const recalBtn = document.getElementById('recalibrateBtn');
+    if (recalBtn) {
+      recalBtn.addEventListener('click', async () => {
+        try {
+          await fetch('/api/recalibrate', { method: 'POST' });
+        } catch (e) {
+          console.error(e);
+        }
+      });
+    }
+
+    // Mode tabs (Live vs File)
+    const liveTab = document.getElementById('realtimeModeBtn');
+    const fileTab = document.getElementById('fileModeBtn');
+    const liveView = document.getElementById('liveDetectionView');
+    const fileView = document.getElementById('recordedFileView');
+
+    if (liveTab && fileTab) {
+      liveTab.addEventListener('click', () => {
+        liveTab.classList.add('active');
+        fileTab.classList.remove('active');
+        if (liveView) liveView.classList.add('active');
+        if (fileView) fileView.classList.remove('active');
+      });
+      fileTab.addEventListener('click', () => {
+        fileTab.classList.add('active');
+        liveTab.classList.remove('active');
+        if (fileView) fileView.classList.add('active');
+        if (liveView) liveView.classList.remove('active');
+      });
     }
   }
 

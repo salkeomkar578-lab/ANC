@@ -22,6 +22,7 @@ class ArtifactDetector:
         raw_audio: np.ndarray,
         enhanced_audio: np.ndarray,
         speech_threshold_rms: float = 0.02,
+        speech_probs: np.ndarray = None,
     ) -> Dict[str, Any]:
         """
         Comprehensive comparison of raw vs enhanced audio.
@@ -48,6 +49,20 @@ class ArtifactDetector:
                 "peak_enh": 0.0,
             }
 
+        # Automatic cross-correlation delay alignment for filterbank latency compensation
+        if min_len > self.sample_rate * 2:
+            import scipy.signal as signal
+            search_len = min(self.sample_rate * 2, min_len)
+            s_raw = raw[:search_len]
+            s_enh = enh[:search_len]
+            cc = signal.correlate(s_enh, s_raw, mode="full", method="fft")
+            lags = signal.correlation_lags(len(s_enh), len(s_raw))
+            best_lag = int(lags[np.argmax(cc)])
+            if 0 < best_lag < int(self.sample_rate * 0.10):
+                aligned_enh = np.zeros_like(raw)
+                aligned_enh[:-best_lag] = enh[best_lag:]
+                enh = aligned_enh
+
         n_frames = min_len // self.frame_size
         raw_frames = raw[:n_frames * self.frame_size].reshape(n_frames, self.frame_size)
         enh_frames = enh[:n_frames * self.frame_size].reshape(n_frames, self.frame_size)
@@ -57,12 +72,15 @@ class ArtifactDetector:
         eps = 1e-6
         gains = enh_rms / (raw_rms + eps)
 
-        # Identify speech-active frames in raw audio
-        speech_mask = raw_rms > speech_threshold_rms
-        num_speech_frames = int(np.sum(speech_mask))
+        # Identify speech-active frames
+        if speech_probs is not None and len(speech_probs) >= n_frames:
+            speech_mask = speech_probs[:n_frames] >= 0.45
+        else:
+            # Fallback RMS threshold
+            speech_mask = raw_rms > speech_threshold_rms
 
+        num_speech_frames = int(np.sum(speech_mask))
         if num_speech_frames == 0:
-            # Fallback if audio has lower overall level
             speech_mask = raw_rms > (np.mean(raw_rms) * 1.2)
             num_speech_frames = int(np.sum(speech_mask))
 
