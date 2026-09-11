@@ -14,12 +14,14 @@ Distinguishes between 'impulsive' (gunshot/artillery), 'steady' (engine/rotor), 
 
 from typing import Tuple, Dict, Any, Optional
 import numpy as np
+from speech_detector import SpeechDetector
 
 
 class NoiseClassifier:
     def __init__(self, sample_rate: int = 16000):
         self.sample_rate = sample_rate
         self._window_cache: Dict[int, np.ndarray] = {}
+        self.speech_detector = SpeechDetector(sample_rate=sample_rate)
 
     def _get_window(self, n: int) -> np.ndarray:
         if n not in self._window_cache:
@@ -129,3 +131,8 @@ class NoiseClassifier:
             return "steady", confidence
 
         return "unclassified", 0.35
+
+    def classify_with_probabilities(self, block: np.ndarray) -> Tuple[str, float, float, float]:
+        label, confidence = self.classify(block)
+        speech_prob, noise_prob, _ = self.speech_detector.detect(block)
+        return label, confidence, speech_prob, noise_prob

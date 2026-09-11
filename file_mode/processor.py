@@ -2,6 +2,8 @@
 High-Throughput File Processor for IGARD-Net.
 Processes recorded WAV files at maximum hardware throughput (RTF << 1.0).
 Zero artificial sleep. Independent from real-time streaming engine.
+Includes intelligent channel classification (stereo voice vs dual-mic ANC)
+and seamless frame processing without dropped lead-in frames.
 """
 
 import time
@@ -44,12 +46,38 @@ class FileProcessor:
         # 2. Extract Primary and Reference Channels
         if data.ndim == 1:
             primary = data
-            # Synthesize correlated reference channel with low-level sensor noise
+            # Estimate stationary noise floor from the lowest 10% energy frames
+            frame_len = min(len(data), 512)
+            n_fr = len(data) // frame_len
+            if n_fr > 2:
+                fr_rms = [np.sqrt(np.mean(data[i*frame_len:(i+1)*frame_len]**2)) for i in range(n_fr)]
+                noise_floor_std = max(1e-4, float(np.percentile(fr_rms, 10)))
+            else:
+                noise_floor_std = 1e-3
             rng = np.random.default_rng(42)
-            reference = 0.5 * data + rng.normal(0, 0.02, len(data))
+            reference = rng.normal(0, noise_floor_std, len(data))
         else:
-            primary = data[:, 0]
-            reference = data[:, 1]
+            ch0 = data[:, 0]
+            ch1 = data[:, 1]
+            # Check cross-correlation between channels
+            rms0 = float(np.sqrt(np.mean(ch0 ** 2))) + 1e-10
+            rms1 = float(np.sqrt(np.mean(ch1 ** 2))) + 1e-10
+            cross_corr = float(np.abs(np.mean(ch0 * ch1)) / (rms0 * rms1))
+
+            if cross_corr > 0.35:
+                # Stereo recording containing common speech on both channels.
+                # In-phase target voice appears on both channels.
+                # Use channel 0 as primary, and the difference (out-of-phase ambient noise) as reference,
+                # avoiding cancellation of in-phase target speech!
+                primary = ch0
+                diff_ref = ch0 - ch1
+                # Ensure diff_ref does not contain residual speech
+                diff_rms = float(np.sqrt(np.mean(diff_ref ** 2))) + 1e-10
+                reference = diff_ref * min(1.0, rms0 / (diff_rms + 1e-6) * 0.5)
+            else:
+                # True dual-mic setup: channel 0 is primary voice mic, channel 1 is ambient noise mic
+                primary = ch0
+                reference = ch1
 
         # 3. Fast Resample to target 16 kHz if necessary
         if orig_sr != self.target_sr:
@@ -59,45 +87,31 @@ class FileProcessor:
         total_samples = len(primary)
         audio_duration_s = total_samples / self.target_sr
 
-        # Prepend 0.5s quiet lead-in if needed for presence gate calibration
-        lead_in_samples = int(0.5 * self.target_sr)
-        rng_lead = np.random.default_rng(77)
-        quiet_ref = rng_lead.normal(0, 0.002, lead_in_samples)
-        
-        p_eval = np.concatenate((np.zeros(lead_in_samples), primary))
-        r_eval = np.concatenate((quiet_ref, reference))
-        n_eval = len(p_eval)
-
         # 4. Process Audio at Maximum Computational Throughput
         cleaned_output = np.empty(total_samples, dtype=np.float64)
-        out_idx = 0
         
         # Reset presence gate baseline for the file
         pipeline.presence_gate.recalibrate()
+        pipeline.speech_detector.reset()
+        pipeline.speech_protection.reset()
+        pipeline.cleanup.reset()
 
-        for start in range(0, n_eval, self.block_size):
-            end = min(start + self.block_size, n_eval)
-            p_block = p_eval[start:end]
-            r_block = r_eval[start:end]
+        for start in range(0, total_samples, self.block_size):
+            end = min(start + self.block_size, total_samples)
+            p_block = primary[start:end]
+            r_block = reference[start:end]
 
             if len(p_block) < self.block_size:
                 pad = self.block_size - len(p_block)
-                p_block = np.pad(p_block, (0, pad))
-                r_block = np.pad(r_block, (0, pad))
-                res = pipeline.process_block(p_block, r_block)
-                out_block = res["audio"][: end - start]
+                p_pad = np.pad(p_block, (0, pad))
+                r_pad = np.pad(r_block, (0, pad))
+                res = pipeline.process_block(p_pad, r_pad)
+                cleaned_output[start:end] = res["audio"][: end - start]
             else:
                 res = pipeline.process_block(p_block, r_block)
-                out_block = res["audio"]
+                cleaned_output[start:end] = res["audio"]
 
-            # Store only after lead-in is passed
-            if start >= lead_in_samples:
-                avail = len(out_block)
-                store_len = min(avail, total_samples - out_idx)
-                cleaned_output[out_idx : out_idx + store_len] = out_block[:store_len]
-                out_idx += store_len
-
-            progress = min(100.0, (start / n_eval) * 100.0)
+            progress = min(100.0, (end / total_samples) * 100.0)
             if state is not None:
                 state.file_progress = progress
             if progress_callback:
@@ -113,30 +127,17 @@ class FileProcessor:
         out_path = self.output_dir / out_filename
         sf.write(str(out_path), (cleaned_safe * 32767.0).astype(np.int16), self.target_sr, subtype="PCM_16")
 
-        # 6. Calculate Real SNR Improvement
-        noise_est = primary - cleaned_safe
-        sig_pow = float(np.mean(cleaned_safe ** 2)) + 1.0e-12
-        noi_pow = float(np.mean(noise_est ** 2)) + 1.0e-12
-        snr_after = 10.0 * np.log10(sig_pow / noi_pow)
-
-        # Update state
-        if state is not None:
-            state.file_progress = 100.0
-            state.file_duration_s = audio_duration_s
-            state.file_processing_time_s = proc_time_s
-            state.file_rtf = rtf
-            state.current_file = filepath.name
-            state.processed_file = out_filename
-            state.file_status = f"Completed in {proc_time_s:.2f}s (RTF: {rtf:.3f})"
-
         return {
-            "input_file": filepath.name,
-            "output_file": out_filename,
+            "status": "success",
+            "filename": filepath.name,
+            "output_file": str(out_path),
             "output_path": str(out_path),
+            "output_filename": out_filename,
+            "sample_rate": self.target_sr,
+            "original_sr": orig_sr,
+            "channels": orig_channels,
             "duration_s": round(audio_duration_s, 2),
             "processing_time_s": round(proc_time_s, 3),
-            "rtf": round(rtf, 3),
-            "snr_improvement_db": round(float(snr_after), 2),
-            "sample_rate": self.target_sr,
-            "channels": orig_channels,
+            "rtf": round(rtf, 4),
+            "frames_processed": total_samples // self.block_size,
         }

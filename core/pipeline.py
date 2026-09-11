@@ -1,23 +1,28 @@
 """
 Core IGARD-Net Signal Chain Pipeline Coordinator.
-Reconstructed for low-latency real-time streaming and high-throughput file processing.
+Reconstructed for low-latency real-time streaming, high-throughput file processing,
+and speech-first preservation.
 
-Architecture:
+Signal Chain:
   Primary & Reference Mic
        │
   [Stage 0]  NoisePresenceGate         -> Quiet bypass or engage
        │
-  [Stage 1]  NoiseClassifier          -> Acoustic label & confidence
-  [Stage 1b] AccelerometerFusion       -> Physical shock cross-modal verification
+  [Stage 1]  SpeechDetector            -> Continuous speech_prob & noise_prob (with temporal hold)
        │
-  [Stage 2]  NLMSFilter (64-tap)       -> Adaptive acoustic cancellation
-  [Stage 3]  Asynchronous GQPSO Tuner  -> Periodic background optimization of mu
+  [Stage 2]  NoiseClassifier          -> Acoustic label & confidence
+  [Stage 2b] AccelerometerFusion       -> Physical shock cross-modal verification
+       │
+  [Stage 3]  NLMSFilter (64-tap)       -> Adaptive acoustic cancellation with DTD
+  [Stage 3b] Asynchronous GQPSO Tuner  -> Multi-objective background optimization of mu
        │
   [Stage 4]  ConfidenceGate            -> Cleanup vs Fail-safe bypass arbiter
        │
-  [Stage 5]  Wiener Soft Masking (OLA) -> Residual transient & drone cleanup
+  [Stage 5]  Wiener Soft Masking (OLA) -> Speech-aware spectral cleanup (300-3400 Hz protected)
        │
-  [Stage 6]  Voice Protection Dynamics -> Speech floor, compressor, peak limiter
+  [Stage 6]  SpeechProtectionGate      -> Strict speech preservation floor & zero hard mutes
+       │
+  [Stage 7]  Voice Protection Dynamics -> Compressor & peak limiter
        │
   [B/A Gate] Before / After Selector   -> Instant zero-cost audition toggle
        │
@@ -41,6 +46,8 @@ from processing.wiener_cleanup import ResidualCleanup
 from processing.dynamics import VoiceProtectionDynamics
 from sensors.accelerometer import AccelerometerBase, cross_check_confidence
 from sensors.mock_sensor import MockAccelerometer
+from speech_detector import SpeechDetector
+from speech_protection import SpeechProtectionGate
 
 
 class IgardNetPipeline:
@@ -80,32 +87,43 @@ class IgardNetPipeline:
             hysteresis_db=pg_cfg.get("hysteresis_db", 2.0),
         )
 
-        # Stage 1: Noise Classifier
+        # Stage 1: Speech Detector (Continuous tracking + temporal hold)
+        st_cfg = self.config.get("speech_tracking", {})
+        self.speech_detector = SpeechDetector(
+            sample_rate=self.sample_rate,
+            frame_size=self.frame_size,
+            attack_ms=st_cfg.get("attack_ms", 20.0),
+            release_ms=st_cfg.get("release_ms", 120.0),
+            hold_ms=st_cfg.get("hold_ms", 100.0),
+            hysteresis=st_cfg.get("hysteresis", 0.08),
+        )
+
+        # Stage 2: Noise Classifier
         self.classifier = NoiseClassifier(sample_rate=self.sample_rate)
 
-        # Stage 1b: Accelerometer
+        # Stage 2b: Accelerometer
         self.accelerometer = accelerometer if accelerometer is not None else MockAccelerometer()
         self.shock_threshold = self.config.get("accelerometer", {}).get("shock_threshold", 0.5)
         self.agreement_boost = self.config.get("accelerometer", {}).get("agreement_boost", 0.25)
 
-        # Stage 2: NLMS Filter
+        # Stage 3: NLMS Filter with DTD
         nlms_cfg = self.config.get("nlms", {})
         self.nlms = NLMSFilter(
             num_taps=nlms_cfg.get("taps", 64),
-            initial_mu=nlms_cfg.get("initial_mu", 0.25),
+            step_size=nlms_cfg.get("initial_mu", 0.20),
             eps=nlms_cfg.get("epsilon", 1.0e-6),
-            leakage=nlms_cfg.get("leakage", 0.9999),
-            adaptation_enabled=nlms_cfg.get("adaptation_enabled", True),
+            leakage=nlms_cfg.get("leakage", 0.9995),
+            max_mu=self.config.get("safety_limits", {}).get("max_filter_mu", 0.50),
             backend=self.backend,
         )
 
-        # Stage 3: GQPSO Tuner (Asynchronous Background Worker)
+        # Stage 3b: GQPSO Tuner (Asynchronous Background Worker)
         gqpso_cfg = self.config.get("gqpso", {})
         self.tuner = QuantumInspiredTuner(
             num_particles=gqpso_cfg.get("num_particles", 8),
             iterations=gqpso_cfg.get("iterations", 5),
             search_min=gqpso_cfg.get("search_min", 0.01),
-            search_max=gqpso_cfg.get("search_max", 1.5),
+            search_max=self.config.get("safety_limits", {}).get("max_filter_mu", 0.50),
             mutation_prob=gqpso_cfg.get("mutation_prob", 0.1),
             history_len=gqpso_cfg.get("history_samples", 1024),
             backend=self.backend,
@@ -131,21 +149,33 @@ class IgardNetPipeline:
         wiener_cfg = self.config.get("wiener", {})
         self.cleanup = ResidualCleanup(
             sample_rate=self.sample_rate,
-            gate_strength=wiener_cfg.get("gate_strength", 1.4),
-            min_gain=wiener_cfg.get("min_gain", 0.08),
+            gate_strength=wiener_cfg.get("gate_strength", 1.0),
+            min_gain=wiener_cfg.get("min_gain", 0.35),
             backend=self.backend,
         )
 
-        # Stage 6: Voice Protection Dynamics
-        vp_cfg = self.config.get("voice_protection", {})
+        # Stage 6: Speech Protection Gate (Mandatory)
+        sp_cfg = self.config.get("speech_protection", {})
+        self.speech_protection = SpeechProtectionGate(
+            sample_rate=self.sample_rate,
+            frame_size=self.frame_size,
+            probability_threshold=sp_cfg.get("probability_threshold", 0.65),
+            minimum_voice_gain=sp_cfg.get("minimum_voice_gain", 0.55),
+            uncertain_voice_gain=sp_cfg.get("uncertain_voice_gain", 0.70),
+            max_suppression_db=sp_cfg.get("max_suppression_db", 12.0),
+            enabled=sp_cfg.get("enabled", True),
+        )
+
+        # Stage 7: Voice Protection Dynamics
+        vp_cfg = self.config.get("compressor", {})
         self.dynamics = VoiceProtectionDynamics(
             sample_rate=self.sample_rate,
-            gain_floor_db=vp_cfg.get("speech_gain_floor_db", -18.0),
-            threshold_db=vp_cfg.get("compressor_threshold_db", -6.0),
-            ratio=vp_cfg.get("compressor_ratio", 3.0),
+            gain_floor_db=-self.config.get("safety_limits", {}).get("max_suppression_db", 12.0),
+            threshold_db=vp_cfg.get("threshold_db", -18.0),
+            ratio=vp_cfg.get("ratio", 2.0),
             attack_ms=vp_cfg.get("attack_ms", 5.0),
-            release_ms=vp_cfg.get("release_ms", 40.0),
-            makeup_gain_db=vp_cfg.get("makeup_gain_db", 1.5),
+            release_ms=vp_cfg.get("release_ms", 100.0),
+            makeup_gain_db=vp_cfg.get("makeup_gain_db", 0.0),
         )
 
         # Rolling history buffers for snapshot extraction
@@ -155,6 +185,7 @@ class IgardNetPipeline:
         self._block_count = 0
         self._snr_ema = 0.0
         self._last_snapshot_time = time.time()
+        self._last_out_sample: Optional[float] = None
 
     def process_block(
         self,
@@ -171,7 +202,6 @@ class IgardNetPipeline:
         reference_block = np.asarray(reference_block, dtype=np.float64)
         n_samples = len(primary_block)
 
-        # Input levels
         primary_rms = float(np.sqrt(np.mean(primary_block ** 2))) + 1.0e-12
         reference_rms = float(np.sqrt(np.mean(reference_block ** 2))) + 1.0e-12
 
@@ -184,19 +214,20 @@ class IgardNetPipeline:
 
         # Stage 0: Presence Gate
         noise_present, floor_est, block_energy = self.presence_gate.check(reference_block)
+
+        # Stage 1: Speech Detection
+        speech_prob, noise_prob, is_speech = self.speech_detector.detect(primary_block)
         
         # Read atomic mu from background tuner worker
         if self.tuner_worker is not None:
             self.nlms.set_step_size(self.tuner_worker.current_mu)
             self.state.update_step_size(self.tuner_worker.current_mu)
 
-        # -------------------------------------------------------------
-        # AUTOPILOT DECISION LOGIC & EXECUTION PATH
-        # -------------------------------------------------------------
-        if not noise_present and self.state.autopilot:
-            # Quiet environment: clean passthrough with minimal distortion
+        # Autopilot decision logic:
+        # Quiet environment: clean passthrough with minimal modification
+        if not noise_present and self.state.autopilot and (speech_prob > 0.35 or block_energy < floor_est * 2.0):
             active_stage = 0
-            stage_status = "Quiet — Environment baseline clean. Passthrough active."
+            stage_status = "Quiet — Environment baseline clean. Speech preserved."
             output_audio = primary_block.copy()
             noise_label = "clean_passthrough"
             confidence = 1.0
@@ -205,10 +236,10 @@ class IgardNetPipeline:
             used_cleanup = False
             snr_delta = 0.0
         else:
-            # Stage 1: Noise Classifier
+            # Stage 2: Noise Classifier
             noise_label, raw_confidence = self.classifier.classify(reference_block)
 
-            # Stage 1b: Accelerometer Cross-Check
+            # Stage 2b: Accelerometer Cross-Check
             shock_score = float(self.accelerometer.read_recent_shock_score())
             confidence = cross_check_confidence(
                 acoustic_label=noise_label,
@@ -219,8 +250,28 @@ class IgardNetPipeline:
             )
             shock_confirmed = (noise_label == "impulsive") and (shock_score >= self.shock_threshold)
 
-            # Stage 2: NLMS Adaptive Filter
-            nlms_out, noise_estimate = self.nlms.process_block(primary_block, reference_block)
+            # Autopilot Aggressiveness:
+            # When speech is active, keep suppression moderate; when noise-only, allow full suppression
+            if self.state.autopilot:
+                if not noise_present:
+                    aggressiveness = 0.0
+                elif is_speech and confidence >= 0.60:
+                    aggressiveness = 0.50
+                elif is_speech and confidence < 0.60:
+                    aggressiveness = 0.25 # Safe conservative fail-safe
+                elif not is_speech and confidence >= 0.70:
+                    aggressiveness = 1.00 # Strong stationary noise suppression
+                else:
+                    aggressiveness = 0.40
+            else:
+                aggressiveness = 0.75
+
+            # Stage 3: NLMS Adaptive Filter (with speech protection & DTD)
+            nlms_out, noise_estimate = self.nlms.process_block(
+                primary_block,
+                reference_block,
+                speech_prob=speech_prob,
+            )
 
             # Periodically submit snapshot to background tuner
             now = time.time()
@@ -229,124 +280,134 @@ class IgardNetPipeline:
                 self._last_snapshot_time = now
 
             # Stage 4: Confidence Gate
-            run_cleanup = self.confidence_gate.decide(confidence, autopilot=self.state.autopilot)
+            run_cleanup = self.confidence_gate.decide(confidence, speech_prob=speech_prob)
 
-            # Stage 5: Wiener Cleanup or Fail-safe Bypass
-            if run_cleanup:
-                # In steady noise: update background spectral profile
-                if noise_label == "steady":
-                    self.cleanup.update_noise_profile(reference_block)
-                    aggressiveness = 1.2
-                elif noise_label == "impulsive" and shock_confirmed:
-                    aggressiveness = 1.4
-                else:
-                    aggressiveness = 0.9
+            # Stage 5: Speech-Aware 50% OLA Wiener Cleanup
+            if run_cleanup and aggressiveness > 0.1:
+                if noise_label == "steady" and speech_prob < 0.25:
+                    self.cleanup.update_noise_profile(reference_block, speech_prob=speech_prob)
 
-                cleaned = self.cleanup.clean(nlms_out, aggressiveness=aggressiveness)
+                cleaned = self.cleanup.clean(
+                    nlms_out,
+                    speech_prob=speech_prob,
+                    aggressiveness=aggressiveness,
+                )
                 used_cleanup = True
                 active_stage = 5
             else:
-                # Conservative fail-safe bypass (pass NLMS output without spectral slicing)
                 cleaned = nlms_out
                 used_cleanup = False
                 active_stage = 4
 
-            # Stage 6: Voice Protection Dynamics (Compressor, Limiter, Gain Floor)
-            output_audio = self.dynamics.process(cleaned, primary_block)
+            # Stage 6: SPEECH PROTECTION GATE (Mandatory)
+            protected_speech, applied_gain = self.speech_protection.protect(
+                raw_input_frame=primary_block,
+                cleaned_frame=cleaned,
+                speech_probability=speech_prob,
+                noise_probability=noise_prob,
+            )
 
-            # Build tactical stage status text
+            # Stage 7: Voice Protection Dynamics (Gentle Compressor & Limiter)
+            output_audio = self.dynamics.process(protected_speech, primary_block)
+
+            # Build stage status text
             if shock_confirmed:
-                stage_status = f"⚡ SHOCK CONFIRMED ({confidence*100:.0f}%) — Cross-modal impact verified. Full suppression engaged."
-            elif noise_label == "impulsive":
-                stage_status = f"⚠ IMPULSIVE SOUND ({confidence*100:.0f}%) — No mechanical shock. Conservative fail-safe active."
+                stage_status = f"⚡ SHOCK CONFIRMED ({confidence*100:.0f}%) — Cross-modal impact verified."
+            elif is_speech:
+                stage_status = f"🗣 SPEECH ACTIVE ({speech_prob*100:.0f}%) — Voice protected (gain: {applied_gain:.2f})"
             elif noise_label == "steady":
-                stage_status = f"🔊 STEADY DRONE ({confidence*100:.0f}%) — Adaptive NLMS + OLA Wiener cleanup active."
+                stage_status = f"🔊 STEADY NOISE ({confidence*100:.0f}%) — Adaptive filter active."
             else:
-                stage_status = f"NOISE PRESENT ({confidence*100:.0f}%) — Adaptive processing engaged."
+                stage_status = f"Filtering ({noise_label}, {confidence*100:.0f}%)"
 
-            # Calculate SNR improvement estimate
-            noise_removed = primary_block - output_audio
-            sig_pow = float(np.mean(output_audio ** 2)) + 1.0e-12
-            noi_pow = float(np.mean(noise_removed ** 2)) + 1.0e-12
-            snr_delta = float(np.clip(10.0 * np.log10(sig_pow / noi_pow), -20.0, 25.0))
+            # Compute estimated SNR improvement
+            clean_rms = float(np.sqrt(np.mean(output_audio ** 2))) + 1.0e-12
+            raw_snr = 20.0 * np.log10(primary_rms / (reference_rms + 1.0e-6))
+            enh_snr = 20.0 * np.log10(clean_rms / (reference_rms + 1.0e-6))
+            snr_delta = float(np.clip(enh_snr - raw_snr, -30.0, 30.0))
 
-        # Update running SNR EMA
-        self._snr_ema = 0.88 * self._snr_ema + 0.12 * snr_delta
+        # Boundary cross-fade ramp on enhanced output to eliminate any sample discontinuity (ticking/clicking)
+        if self._last_out_sample is not None and len(output_audio) >= 16:
+            step = float(self._last_out_sample - output_audio[0])
+            if abs(step) > 0.05:
+                ramp = np.linspace(1.0, 0.0, 16)
+                output_audio[:16] += step * ramp
+        if len(output_audio) > 0:
+            self._last_out_sample = float(output_audio[-1])
+
+        # Before / After Multiplexer
+        if self.state.before_after:
+            final_audio = output_audio
+        else:
+            final_audio = primary_block.copy()
+
+        # Update telemetry metrics
+        t_proc_ms = (time.perf_counter() - t_start) * 1000.0
+        self.state.record_latency(process_ms=t_proc_ms)
+        self._snr_ema = 0.90 * self._snr_ema + 0.10 * snr_delta
+        self.state.snr_delta = float(self._snr_ema)
+        self.state.noise_confidence = float(confidence)
+        self.state.shock_confidence = float(shock_score)
+        self.state.current_stage = active_stage
+
         self._block_count += 1
-
-        # Real processing latency measurement
-        t_end = time.perf_counter()
-        proc_latency_ms = (t_end - t_start) * 1000.0
-
-        # Before / After selection
-        final_audio = output_audio if self.state.before_after else primary_block
-
-        output_rms = float(np.sqrt(np.mean(final_audio ** 2))) + 1.0e-12
-
-        # Update state container
-        self.state.noise_label = noise_label
-        self.state.confidence = confidence
-        self.state.shock_score = shock_score
-        self.state.shock_confirmed = shock_confirmed
-        self.state.noise_present = noise_present
-        self.state.noise_floor = floor_est
-        self.state.active_stage = active_stage
-        self.state.stage_status = stage_status
-        self.state.primary_rms = primary_rms
-        self.state.reference_rms = reference_rms
-        self.state.output_rms = output_rms
-        self.state.snr_delta = snr_delta
-        self.state.snr_ema = self._snr_ema
+        self.state.frames_processed = self._block_count
 
         return {
             "audio": final_audio,
             "raw_audio": primary_block,
+            "processed_audio": output_audio,
             "enhanced_audio": output_audio,
+            "speech_prob": float(speech_prob),
+            "noise_prob": float(noise_prob),
             "noise_label": noise_label,
-            "confidence": confidence,
-            "shock_score": shock_score,
+            "confidence": float(confidence),
+            "shock_score": float(shock_score),
             "shock_confirmed": shock_confirmed,
             "used_cleanup_stage": used_cleanup,
-            "nlms_step_size": self.nlms.step_size,
-            "noise_present": noise_present,
-            "noise_floor": floor_est,
             "active_stage": active_stage,
             "stage_status": stage_status,
             "primary_rms": primary_rms,
-            "reference_rms": reference_rms,
-            "output_rms": output_rms,
-            "snr_delta": snr_delta,
-            "estimated_snr": self._snr_ema,
-            "proc_latency_ms": proc_latency_ms,
+            "processed_rms": float(np.sqrt(np.mean(output_audio ** 2))),
+            "snr_delta": float(self._snr_ema),
+            "processing_time_ms": t_proc_ms,
             "block_count": self._block_count,
         }
 
-    def process_stream(self, primary: np.ndarray, reference: np.ndarray, block_size: Optional[int] = None) -> Tuple[np.ndarray, list]:
-        """Convenience method for offline streaming over numpy arrays."""
-        assert len(primary) == len(reference), "Primary and reference signals must have identical length."
+    def process_stream(
+        self,
+        primary: np.ndarray,
+        reference: np.ndarray,
+        block_size: Optional[int] = None,
+    ) -> Tuple[np.ndarray, list]:
+        """Batch process an audio stream sequentially in contiguous blocks."""
         bs = block_size if block_size is not None else self.frame_size
         n = len(primary)
-        output = np.zeros(n, dtype=np.float64)
-        telemetry = []
+        assert len(reference) == n, "Primary and Reference streams must have identical length"
 
-        for start in range(0, n, bs):
-            end = min(start + bs, n)
-            p_block = primary[start:end]
-            r_block = reference[start:end]
-            if len(p_block) < bs:
-                pad = bs - len(p_block)
-                p_pad = np.pad(p_block, (0, pad))
-                r_pad = np.pad(r_block, (0, pad))
+        out_audio = np.empty(n, dtype=np.float64)
+        telemetry_log = []
+
+        for idx in range(0, n, bs):
+            end = min(idx + bs, n)
+            p_chunk = primary[idx:end]
+            r_chunk = reference[idx:end]
+
+            if len(p_chunk) < bs:
+                pad_len = bs - len(p_chunk)
+                p_pad = np.pad(p_chunk, (0, pad_len))
+                r_pad = np.pad(r_chunk, (0, pad_len))
                 res = self.process_block(p_pad, r_pad)
-                output[start:end] = res["audio"][: end - start]
+                out_audio[idx:end] = res["audio"][: end - idx]
             else:
-                res = self.process_block(p_block, r_block)
-                output[start:end] = res["audio"]
-            telemetry.append({k: v for k, v in res.items() if k != "audio"})
+                res = self.process_block(p_chunk, r_chunk)
+                out_audio[idx:end] = res["audio"]
 
-        return output, telemetry
+            telemetry_log.append({k: v for k, v in res.items() if k not in ("audio", "raw_audio", "processed_audio")})
+
+        return out_audio, telemetry_log
 
     def close(self):
-        """Clean shutdown of background threads."""
-        if self.tuner_worker is not None:
+        """Stops background tuner worker and releases resources."""
+        if hasattr(self, 'tuner_worker') and self.tuner_worker is not None:
             self.tuner_worker.stop()

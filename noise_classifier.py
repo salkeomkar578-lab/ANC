@@ -27,6 +27,8 @@ UPGRADE PATH (do this once you have recorded/collected noise clips):
 
 import numpy as np
 
+from speech_detector import SpeechDetector
+
 LABELS = ["impulsive", "steady", "unclassified"]
 
 
@@ -34,6 +36,7 @@ class NoiseClassifier:
     def __init__(self, sample_rate=16000):
         self.sample_rate = sample_rate
         self.model = None  # populate this once a trained model exists
+        self.speech_detector = SpeechDetector(sample_rate=sample_rate)
 
     def extract_features(self, block):
         block = np.asarray(block, dtype=np.float64)
@@ -180,3 +183,12 @@ class NoiseClassifier:
             )
         feats = self.extract_features(block)
         return self._rule_based_classify(feats)
+
+    def classify_with_probabilities(self, block):
+        """
+        Continuous decision model returning:
+        (label, confidence, speech_probability, noise_probability)
+        """
+        label, confidence = self.classify(block)
+        speech_prob, noise_prob, _ = self.speech_detector.detect(block)
+        return label, confidence, speech_prob, noise_prob

@@ -141,12 +141,12 @@
           <div class="stage-badge" id="stage5Badge">WIENER ON</div>
         </div>
 
-        <!-- Stage 6: Voice Protection Dynamics -->
+        <!-- Stage 6: Speech Protection Gate & Dynamics -->
         <div class="pipeline-stage" id="stage6">
-          <div class="stage-num">[Stage 6] Dynamics</div>
-          <div class="stage-name">Voice Safeguards</div>
-          <div class="stage-desc">Speech gain floor (-18dB), compressor, and soft peak limiter.</div>
-          <div class="stage-badge" id="stage6Badge">LIMITER ENGAGED</div>
+          <div class="stage-num">[Stage 6] Speech Protection</div>
+          <div class="stage-name">Voice Floor & Limiter</div>
+          <div class="stage-desc">Continuous hold, speech gain floor (min 0.55), zero hard mutes.</div>
+          <div class="stage-badge" id="stage6Badge">VOICE PROTECTED</div>
         </div>
       </div>
     </section>
@@ -211,6 +211,16 @@
         </div>
         <div class="metric-value" id="metricFrames">0</div>
         <div class="metric-sub" id="metricDropped">Drops: 0 &bull; Underruns: 0</div>
+      </div>
+
+      <!-- Speech Probability & Continuous Protection Gate -->
+      <div class="metric-card speech-card">
+        <div class="metric-header">
+          <span>Speech Probability</span>
+          <span class="metric-badge badge-snr" id="speechBadge">Voice Protected</span>
+        </div>
+        <div class="metric-value" id="metricSpeech">-- %</div>
+        <div class="metric-sub" id="metricSpeechSub">Continuous hold &bull; Floor: 0.55 &bull; 0 Mutes</div>
       </div>
     </section>
 

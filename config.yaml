@@ -1,5 +1,5 @@
 # IGARD-Net Configuration File
-# Tactical Real-Time Audio Noise Cancellation & Speech Enhancement
+# Tactical Real-Time Audio Noise Cancellation & Speech-First Enhancement
 
 audio:
   sample_rate: 16000
@@ -8,11 +8,39 @@ audio:
   channels: 1
   bit_depth: 16
 
+speech_tracking:
+  attack_ms: 20.0
+  release_ms: 120.0
+  hold_ms: 100.0
+  hysteresis: 0.08
+
+speech_protection:
+  enabled: true
+  probability_threshold: 0.65
+  minimum_voice_gain: 0.55
+  uncertain_voice_gain: 0.70
+  max_suppression_db: 12.0
+
+safety_limits:
+  max_suppression_db: 12.0
+  minimum_output_gain: 0.50
+  max_gain_change_per_frame: 0.05
+  max_filter_mu: 0.50
+  max_processing_latency_ms: 50.0
+
+compressor:
+  enabled: true
+  threshold_db: -18.0
+  ratio: 2.0
+  attack_ms: 5.0
+  release_ms: 100.0
+  makeup_gain_db: 0.0
+
 nlms:
   taps: 64
-  initial_mu: 0.25
+  initial_mu: 0.20
   epsilon: 1.0e-6
-  leakage: 0.9999
+  leakage: 0.9995
   adaptation_enabled: true
 
 gqpso:
@@ -22,7 +50,7 @@ gqpso:
   interval_s: 1.0        # Asynchronous background retuning interval in seconds
   history_samples: 1024  # History window size for optimization fitness
   search_min: 0.01
-  search_max: 1.5
+  search_max: 0.50       # Safety bound on filter mu
   mutation_prob: 0.1
 
 presence_gate:
@@ -37,18 +65,18 @@ classifier:
 
 wiener:
   enabled: true
-  gate_strength: 1.4
-  min_gain: 0.08         # Gain floor prevents harsh musical noise
+  gate_strength: 1.0
+  min_gain: 0.35         # Formant protection floor prevents harsh speech muting
   smoothing_factor: 0.85
 
 voice_protection:
   enabled: true
-  speech_gain_floor_db: -18.0  # Safeguard: never attenuate speech past -18 dB relative to input
-  compressor_threshold_db: -6.0
-  compressor_ratio: 3.0
+  speech_gain_floor_db: -12.0
+  compressor_threshold_db: -18.0
+  compressor_ratio: 2.0
   attack_ms: 5.0
-  release_ms: 40.0
-  makeup_gain_db: 1.5
+  release_ms: 100.0
+  makeup_gain_db: 0.0
 
 accelerometer:
   shock_threshold: 0.5

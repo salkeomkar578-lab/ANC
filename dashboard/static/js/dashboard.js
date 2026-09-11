@@ -302,6 +302,28 @@
       }
     }
 
+    const speechEl = document.getElementById('metricSpeech');
+    const speechSub = document.getElementById('metricSpeechSub');
+    const speechBadge = document.getElementById('speechBadge');
+    if (speechEl && data.speech_prob !== undefined) {
+      const probPct = Math.round(data.speech_prob * 100);
+      speechEl.textContent = `${probPct}%`;
+      if (speechBadge) {
+        if (data.speech_prob >= 0.50) {
+          speechBadge.className = 'metric-badge badge-snr';
+          speechBadge.textContent = 'Voice Active';
+          speechEl.style.color = 'var(--accent-cyan)';
+        } else {
+          speechBadge.className = 'metric-badge';
+          speechBadge.textContent = 'Guarded';
+          speechEl.style.color = 'var(--text-primary)';
+        }
+      }
+      if (speechSub) {
+        speechSub.textContent = `Noise: ${Math.round(data.noise_prob * 100)}% • Floor: 0.55 • No Mute`;
+      }
+    }
+
     // 4. Dual VU Meters
     updateMeter('primaryMeterBar', 'primaryDbText', data.primary_level);
     updateMeter('outputMeterBar', 'outputDbText', data.output_level);

@@ -46,11 +46,19 @@ class QuantumInspiredTuner:
         self.cached_best_mu: float = 0.25
         self.last_retune_time: float = 0.0
 
-    def _fitness(self, step_size: float, primary_snap: np.ndarray, ref_snap: np.ndarray, num_taps: int) -> float:
+    def _fitness(
+        self,
+        step_size: float,
+        primary_snap: np.ndarray,
+        ref_snap: np.ndarray,
+        num_taps: int,
+        speech_prob: float = 0.0,
+    ) -> float:
         """
-        Fast fitness evaluation: negative residual energy after trial filtering.
-        Higher fitness (closer to 0) = better noise reduction.
+        Multi-objective fitness: balances noise reduction against speech preservation.
+        Penalizes excessive attenuation when speech is present.
         """
+        step_size = float(np.clip(step_size, self.search_min, self.search_max))
         init_weights = np.zeros(num_taps, dtype=np.float64)
         init_ref = np.zeros(num_taps, dtype=np.float64)
         
@@ -63,8 +71,22 @@ class QuantumInspiredTuner:
             eps=1.0e-6,
             leakage=1.0,
         )
+        in_energy = float(np.mean(primary_snap ** 2)) + 1.0e-12
         residual_energy = float(np.mean(err ** 2)) + 1.0e-12
-        return -residual_energy
+        attenuation_ratio = residual_energy / in_energy
+
+        # Noise reduction reward
+        noise_reward = -residual_energy
+
+        # Heavy speech-loss penalty if speech is active and over-suppressed
+        speech_loss_penalty = 0.0
+        if speech_prob > 0.25:
+            safe_floor = 0.50
+            if attenuation_ratio < safe_floor:
+                deficit = safe_floor - attenuation_ratio
+                speech_loss_penalty = 10.0 * (deficit ** 2) * in_energy * speech_prob
+
+        return float(noise_reward - speech_loss_penalty)
 
     def optimize_step(self, primary_snap: np.ndarray, ref_snap: np.ndarray, num_taps: int = 64) -> float:
         """

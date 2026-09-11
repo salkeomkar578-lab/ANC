@@ -72,7 +72,7 @@ class SystemState:
         
         self.last_update_ts: float = time.time()
 
-    def record_latency(self, capture_ms: float, process_ms: float, queue_ms: float, output_ms: float):
+    def record_latency(self, capture_ms: float = 0.0, process_ms: float = 0.0, queue_ms: float = 0.0, output_ms: float = 0.0):
         total = capture_ms + process_ms + queue_ms + output_ms
         with self._lock:
             self.latency_capture_ms = capture_ms

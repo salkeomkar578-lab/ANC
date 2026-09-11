@@ -1,7 +1,7 @@
 """
-Stage 4: Confidence Gate.
-Decides whether to engage spectral cleanup or use fail-safe bypass.
-Prevents speech destruction when acoustic classification confidence is low.
+Stage 4: Speech-First Confidence Gate.
+Evaluates classifier reliability and determines whether post-NLMS spectral cleanup
+should execute, or safely fail-safe to speech preservation bypass.
 """
 
 
@@ -9,13 +9,14 @@ class ConfidenceGate:
     def __init__(self, threshold: float = 0.60):
         self.threshold = threshold
 
-    def decide(self, confidence: float, autopilot: bool = True) -> bool:
-        """
-        Returns True if cleanup should run, False for fail-safe bypass.
-        """
+    def decide(self, confidence: float, speech_prob: float = 0.0, autopilot: bool = True) -> bool:
         if not autopilot:
             return True
+        if speech_prob > 0.60 and confidence < self.threshold:
+            return False
         return confidence >= self.threshold
 
-    def set_threshold(self, new_threshold: float):
-        self.threshold = float(max(0.1, min(0.95, new_threshold)))
+    def get_aggressiveness(self, confidence: float, speech_prob: float = 0.0) -> float:
+        if confidence < self.threshold:
+            return 0.3 * (1.0 - speech_prob)
+        return float(max(0.2, (confidence - self.threshold) / (1.0 - self.threshold + 1e-6)) * (1.0 - 0.7 * speech_prob))

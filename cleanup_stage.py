@@ -1,102 +1,165 @@
 """
-Stage 4 of IGARD-Net: residual cleanup, only invoked when the confidence
-gate (confidence_gate.py) decides the classifier is confident enough.
-
-HONESTY NOTE FOR THE TEAM:
-The final design calls for a tiny trained neural model here (DTLN/uNet-
-style, a few hundred KB) to mop up leftover transient noise the NLMS
-stage couldn't remove. Training that model needs paired clean/noisy
-defense-audio data, which doesn't exist yet.
-
-So this file implements classical WIENER-FILTER SOFT MASKING instead --
-a real, working DSP technique that computes a smooth frequency gain mask
-G = max(|X|² - α|N|², 0) / (|X|² + ε). This produces substantially
-fewer "musical noise" (isolated spectral peak) artifacts than naive
-hard spectral gating, while remaining 100% classical DSP and running
-efficiently on Raspberry Pi 4 CPU using pure NumPy.
-
-It is a placeholder for the trained model, not a fake version of it: the
-function signature (`clean(block) -> cleaned_block`) is exactly what the
-future neural model will implement, so swapping it in later is a
-one-function change in pipeline.py.
+Stage 5 of IGARD-Net: Speech-Aware Overlap-Add (OLA) Wiener Spectral Cleanup.
+Protects speech formants (300 Hz - 3400 Hz), preserves vowel energy and consonant
+transitions, uses 50% Overlap-Add reconstruction (zero boundary dips), and only
+updates noise profiles during confirmed non-speech intervals.
 """
 
+from typing import Optional
 import numpy as np
+from gain_smoother import GainSmoother
 
 
 class ResidualCleanup:
-    def __init__(self, sample_rate=16000, gate_strength=1.5, min_gain=0.05):
-        """
-        gate_strength: alpha factor for noise power oversubtraction.
-            Higher = more aggressive cleaning, but more risk of speech attenuation.
-        min_gain: floor for gain mask to prevent unnatural dead-silence pumping artifacts.
-        """
+    def __init__(
+        self,
+        sample_rate: int = 16000,
+        gate_strength: float = 1.0,
+        min_gain: float = 0.35,
+    ):
         self.sample_rate = sample_rate
         self.gate_strength = gate_strength
         self.min_gain = min_gain
-        self._noise_profile = None
 
-    def update_noise_profile(self, noise_only_block):
-        """Call this during known-silent/noise-only moments to calibrate."""
+        self._noise_profile: Optional[np.ndarray] = None
+        self._mask_smoother = GainSmoother(
+            sample_rate=sample_rate,
+            frame_size=256,
+            attack_ms=15.0,
+            release_ms=80.0,
+            max_delta_per_frame=0.06,
+            min_gain=min_gain,
+        )
+
+        # Stateful 50% Overlap-Add buffers
+        self._prev_input: Optional[np.ndarray] = None
+        self._overlap_buf: Optional[np.ndarray] = None
+        self._window: Optional[np.ndarray] = None
+        self._window_len: int = 0
+        self._freqs: Optional[np.ndarray] = None
+        self._speech_band_mask: Optional[np.ndarray] = None
+
+    def reset(self):
+        self._noise_profile = None
+        self._prev_input = None
+        self._overlap_buf = None
+        self._window_len = 0
+        self._mask_smoother.reset(1.0)
+
+    def update_noise_profile(self, noise_only_block: np.ndarray, speech_prob: float = 0.0):
+        """
+        Only updates noise profile during verified quiet or noise-only moments
+        to prevent learning speech formants as background noise.
+        """
+        if speech_prob > 0.30:
+            return  # Never update noise profile during speech
+
         block = np.asarray(noise_only_block, dtype=np.float64)
         n = len(block)
-        spectrum = np.abs(np.fft.rfft(block * np.hanning(n)))
-        power = spectrum ** 2
-        if self._noise_profile is None:
-            self._noise_profile = power
-        else:
-            # exponential moving average so it adapts smoothly over time
-            self._noise_profile = 0.9 * self._noise_profile + 0.1 * power
+        if n == 0:
+            return
 
-    def clean(self, block):
+        win = np.hanning(n)
+        spectrum = np.fft.rfft(block * win)
+        power = np.abs(spectrum) ** 2
+
+        if self._noise_profile is None or len(self._noise_profile) != len(power):
+            self._noise_profile = power.copy()
+        else:
+            self._noise_profile = 0.90 * self._noise_profile + 0.10 * power
+
+    def clean(
+        self,
+        block: np.ndarray,
+        speech_prob: float = 0.0,
+        aggressiveness: float = 1.0,
+    ) -> np.ndarray:
         """
-        Applies Wiener-filter-style soft spectral masking.
-        This is the function a trained neural model will eventually replace.
-        Input: 1D float array. Output: 1D float array of identical length.
+        Speech-aware Wiener spectral cleanup with 50% Overlap-Add.
         """
         block = np.asarray(block, dtype=np.float64)
         n = len(block)
         if n == 0:
             return block
 
-        window = np.hanning(n)
-        spectrum = np.fft.rfft(block * window)
+        # Setup 2*N window for continuous 50% OLA
+        win_len = 2 * n
+        if self._window_len != win_len or self._prev_input is None:
+            self._window_len = win_len
+            self._window = np.sqrt(np.hanning(win_len)).astype(np.float64)
+            self._prev_input = np.zeros(n, dtype=np.float64)
+            self._overlap_buf = np.zeros(n, dtype=np.float64)
+            self._freqs = np.fft.rfftfreq(win_len, 1.0 / self.sample_rate)
+            self._speech_band_mask = (self._freqs >= 300.0) & (self._freqs <= 3400.0)
+
+        # Prepend previous frame to form 2*N analysis window
+        frame_2n = np.concatenate((self._prev_input, block))
+        self._prev_input = block.copy()
+
+        # Windowed RFFT
+        windowed = frame_2n * self._window
+        spectrum = np.fft.rfft(windowed)
         power = np.abs(spectrum) ** 2
         phase = np.angle(spectrum)
 
+        # Update noise profile slowly if speech probability is very low
+        if speech_prob < 0.20:
+            if self._noise_profile is None or len(self._noise_profile) != len(power):
+                self._noise_profile = power * 0.5
+            else:
+                self._noise_profile = 0.92 * self._noise_profile + 0.08 * power
+
         if self._noise_profile is None:
-            # No calibration yet -- estimate noise power floor from low-level percentile
-            noise_power = 0.0025 * np.max(power + 1e-12)
+            # Conservative initial noise power estimate
+            noise_power = np.percentile(power, 15) * np.ones_like(power)
         else:
-            # Ensure noise profile matches current FFT length if block length varied
             if len(self._noise_profile) != len(power):
                 noise_power = np.interp(
                     np.linspace(0, 1, len(power)),
                     np.linspace(0, 1, len(self._noise_profile)),
-                    self._noise_profile
+                    self._noise_profile,
                 )
             else:
                 noise_power = self._noise_profile
 
-        # Wiener soft-masking gain:
-        # G(f) = max(P_signal - alpha * P_noise, 0) / (P_signal + epsilon)
-        alpha = self.gate_strength
+        # Speech-Adaptive Suppression Control:
+        # Lower alpha when speech is present to preserve vowels and consonants
+        alpha = self.gate_strength * aggressiveness * max(0.25, 1.0 - 0.75 * speech_prob)
+
+        # Wiener gain: G = max(P_sig - alpha * P_noise, 0) / P_sig
         subtracted = np.maximum(power - alpha * noise_power, 0.0)
-        gain = subtracted / (power + 1e-10)
-        # Apply gain floor to prevent harsh musical noise or dropouts
-        gain = np.clip(gain, self.min_gain, 1.0)
+        raw_gain = subtracted / (power + 1e-10)
 
-        # Smooth gain across neighboring bins to reduce spectral peaks
-        if len(gain) >= 3:
-            gain_smoothed = 0.25 * np.roll(gain, 1) + 0.5 * gain + 0.25 * np.roll(gain, -1)
-            gain_smoothed[0] = gain[0]
-            gain_smoothed[-1] = gain[-1]
-            gain = gain_smoothed
+        # Frequency-Dependent Speech Formant Protection:
+        # In speech formant bands (300 - 3400 Hz), enforce an elevated gain floor
+        formant_floor = np.full_like(raw_gain, self.min_gain)
+        if self._speech_band_mask is not None:
+            # Raise floor in speech band proportional to speech probability
+            formant_boost = self.min_gain + (0.85 - self.min_gain) * speech_prob
+            formant_floor[self._speech_band_mask] = np.maximum(
+                formant_floor[self._speech_band_mask],
+                formant_boost,
+            )
 
-        cleaned_magnitude = np.sqrt(power) * gain
-        cleaned_spectrum = cleaned_magnitude * np.exp(1j * phase)
-        cleaned = np.fft.irfft(cleaned_spectrum, n=n)
+        gain_clamped = np.maximum(raw_gain, formant_floor)
+        gain_clamped = np.clip(gain_clamped, 0.0, 1.0)
 
-        # Window reconstruction with normalization to reduce edge artifacts
-        norm = window / (window ** 2 + 1e-6)
-        return cleaned * window
+        # 3-tap spectral smoothing across frequency bins
+        if len(gain_clamped) >= 3:
+            gain_clamped = 0.25 * np.roll(gain_clamped, 1) + 0.5 * gain_clamped + 0.25 * np.roll(gain_clamped, -1)
+
+        # Temporal gain smoothing across frames
+        gain_smooth = self._mask_smoother.smooth_spectrum_mask(gain_clamped)
+
+        # Apply gain mask to spectrum
+        cleaned_spectrum = spectrum * gain_smooth
+
+        # Inverse RFFT and synthesis window
+        rec_2n = np.fft.irfft(cleaned_spectrum, n=win_len)
+        rec_win = rec_2n * self._window
+
+        # Overlap-Add
+        out_block = rec_win[:n] + self._overlap_buf
+        self._overlap_buf = rec_win[n:].copy()
+
+        return out_block

@@ -77,6 +77,8 @@ class TelemetryDispatcher:
             "stage_status": pipeline_result.get("stage_status", ""),
             "noise_label": pipeline_result.get("noise_label", "standby"),
             "confidence": round(float(pipeline_result.get("confidence", 0.0)), 3),
+            "speech_prob": round(float(pipeline_result.get("speech_prob", 0.0)), 3),
+            "noise_prob": round(float(pipeline_result.get("noise_prob", 1.0)), 3),
             "shock_score": round(float(pipeline_result.get("shock_score", 0.0)), 3),
             "shock_confirmed": bool(pipeline_result.get("shock_confirmed", False)),
             "used_cleanup_stage": bool(pipeline_result.get("used_cleanup_stage", False)),
