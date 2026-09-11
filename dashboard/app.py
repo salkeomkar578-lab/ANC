@@ -241,29 +241,45 @@ def api_process_file():
     })
 
 
-@app.route("/api/audio/upload/<filename>")
+@app.route("/api/audio/upload/<path:filename>")
 def serve_uploaded_file(filename):
-    return send_from_directory(str(UPLOAD_FOLDER), Path(filename).name)
+    safe_name = Path(filename).name
+    file_path = UPLOAD_FOLDER / safe_name
+    if not file_path.exists():
+        return jsonify({"status": "error", "message": "File not found"}), 404
+    ext = file_path.suffix.lower()
+    mimetype = "audio/wav"
+    if ext == ".mp3":
+        mimetype = "audio/mpeg"
+    elif ext in (".ogg", ".opus"):
+        mimetype = "audio/ogg"
+    elif ext == ".flac":
+        mimetype = "audio/flac"
+    return send_file(str(file_path), mimetype=mimetype, conditional=True)
 
 
-@app.route("/api/audio/output/<filename>")
+@app.route("/api/audio/output/<path:filename>")
 def serve_output_file(filename):
-    return send_from_directory(str(OUTPUT_FOLDER), Path(filename).name)
+    safe_name = Path(filename).name
+    file_path = OUTPUT_FOLDER / safe_name
+    if not file_path.exists():
+        return jsonify({"status": "error", "message": "File not found"}), 404
+    return send_file(str(file_path), mimetype="audio/wav", conditional=True)
 
 
-@app.route("/api/audio/download/<filename>")
+@app.route("/api/audio/download/<path:filename>")
 def download_output_file(filename):
     file_path = OUTPUT_FOLDER / Path(filename).name
     if not file_path.exists():
         return jsonify({"status": "error", "message": "File not found"}), 404
-    return send_file(str(file_path), as_attachment=True)
+    return send_file(str(file_path), as_attachment=True, download_name=Path(filename).name)
 
 
 @app.route("/api/audio/sample")
 def serve_sample_voice():
     sample_path = PROJECT_ROOT / "sample_voice_44k.wav"
     if sample_path.exists():
-        return send_file(str(sample_path))
+        return send_file(str(sample_path), mimetype="audio/wav", conditional=True)
     return jsonify({"status": "error", "message": "Sample file not found."}), 404
 
 

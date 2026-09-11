@@ -61,7 +61,8 @@ class FileProcessor:
 
         # Stage 1: Load Audio & Channel Analysis
         report(5.0, "Ingesting Audio & Analyzing Channel Configuration...", 1)
-        data, orig_sr = sf.read(str(filepath), dtype="float64")
+        from file_mode.uploader import load_audio_universal
+        data, orig_sr = load_audio_universal(filepath)
         orig_channels = data.ndim if data.ndim == 1 else data.shape[1]
 
         # Extract Primary and Reference Channels
@@ -171,12 +172,21 @@ class FileProcessor:
         raw_wave = decimate_for_ui(primary, 300)
         enh_wave = decimate_for_ui(cleaned_safe, 300)
 
+        # Export a browser-safe 16-bit PCM WAV of the raw audio into output_dir
+        # so any uploaded format (MP3, FLAC, OGG, M4A) can be played directly by the browser!
+        raw_out_filename = f"raw_{filepath.stem}.wav"
+        raw_out_path = self.output_dir / raw_out_filename
+        sf.write(str(raw_out_path), (np.clip(primary, -1.0, 1.0) * 32767.0).astype(np.int16), self.target_sr, subtype="PCM_16")
+
         report(100.0, "File Processing & Quality Audit Complete!", 5)
 
         return {
             "status": "success",
             "filename": filepath.name,
             "input_file": filepath.name,
+            "raw_audio_file": raw_out_filename,
+            "raw_audio_url": f"/api/audio/output/{raw_out_filename}",
+            "cleaned_audio_url": f"/api/audio/output/{out_filename}",
             "output_file": out_filename,
             "output_path": str(out_path),
             "output_filename": out_filename,

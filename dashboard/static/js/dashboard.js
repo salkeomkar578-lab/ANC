@@ -828,22 +828,31 @@
 
       dropzone.addEventListener('dragover', (e) => {
         e.preventDefault();
+        e.stopPropagation();
         dropzone.style.borderColor = 'var(--accent-cyan)';
+        dropzone.style.background = 'rgba(56, 189, 248, 0.12)';
       });
-      dropzone.addEventListener('dragleave', () => {
+      dropzone.addEventListener('dragleave', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
         dropzone.style.borderColor = 'rgba(56, 189, 248, 0.3)';
+        dropzone.style.background = 'rgba(14, 21, 36, 0.6)';
       });
       dropzone.addEventListener('drop', (e) => {
         e.preventDefault();
+        e.stopPropagation();
         dropzone.style.borderColor = 'rgba(56, 189, 248, 0.3)';
-        if (e.dataTransfer.files.length > 0) {
+        dropzone.style.background = 'rgba(14, 21, 36, 0.6)';
+        if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
           handleFileUpload(e.dataTransfer.files[0]);
         }
       });
 
       fileInput.addEventListener('change', () => {
-        if (fileInput.files.length > 0) {
-          handleFileUpload(fileInput.files[0]);
+        if (fileInput.files && fileInput.files.length > 0) {
+          const selectedFile = fileInput.files[0];
+          fileInput.value = ''; // Allow selecting the same file repeatedly
+          handleFileUpload(selectedFile);
         }
       });
     }
@@ -851,7 +860,16 @@
     if (runSampleBtn) {
       runSampleBtn.addEventListener('click', async () => {
         const s = document.getElementById('fileStatusText');
-        if (s) s.textContent = 'Processing repository benchmark sample...';
+        const pBar = document.getElementById('fileProgressBar');
+        const pText = document.getElementById('fileProgressText');
+        const trackerBadge = document.getElementById('trackerStatusBadge');
+        if (s) s.textContent = 'Initiating repository benchmark (sample_voice_44k.wav)...';
+        if (pBar) pBar.style.width = '10%';
+        if (pText) pText.textContent = '10%';
+        if (trackerBadge) {
+          trackerBadge.textContent = 'RUNNING';
+          trackerBadge.className = 'tracker-status running';
+        }
         try {
           await fetch('/api/process_file', {
             method: 'POST',
@@ -868,7 +886,17 @@
   // --- File Upload & Batch Processing Flow ---
   async function handleFileUpload(file) {
     const statusText = document.getElementById('fileStatusText');
-    if (statusText) statusText.textContent = `Uploading ${file.name}...`;
+    const pBar = document.getElementById('fileProgressBar');
+    const pText = document.getElementById('fileProgressText');
+    const trackerBadge = document.getElementById('trackerStatusBadge');
+
+    if (statusText) statusText.textContent = `Uploading & decoding ${file.name}...`;
+    if (pBar) pBar.style.width = '8%';
+    if (pText) pText.textContent = '8%';
+    if (trackerBadge) {
+      trackerBadge.textContent = 'UPLOADING';
+      trackerBadge.className = 'tracker-status running';
+    }
 
     const formData = new FormData();
     formData.append('file', file);
@@ -890,12 +918,12 @@
         const srEl = document.getElementById('metaFileSr');
         const chEl = document.getElementById('metaFileCh');
 
-        if (nameEl) nameEl.textContent = meta.filename;
+        if (nameEl) nameEl.textContent = `${meta.filename} (${meta.format})`;
         if (durEl) durEl.textContent = `${meta.duration_s}s`;
         if (srEl) srEl.textContent = `${meta.sample_rate} Hz`;
         if (chEl) chEl.textContent = `${meta.channels} ch`;
 
-        if (statusText) statusText.textContent = 'Upload validated. Initiating DSP batch pipeline...';
+        if (statusText) statusText.textContent = 'File verified. Launching AI speech preservation engine...';
 
         // Trigger batch file processing
         await fetch('/api/process_file', {
@@ -904,10 +932,18 @@
           body: JSON.stringify({ filename: meta.filename })
         });
       } else {
-        if (statusText) statusText.textContent = `Error: ${data.message}`;
+        if (statusText) statusText.textContent = `Upload Error: ${data.message}`;
+        if (trackerBadge) {
+          trackerBadge.textContent = 'ERROR';
+          trackerBadge.className = 'tracker-status';
+        }
       }
     } catch (e) {
       if (statusText) statusText.textContent = `Upload failed: ${e.message}`;
+      if (trackerBadge) {
+        trackerBadge.textContent = 'FAILED';
+        trackerBadge.className = 'tracker-status';
+      }
     }
   }
 
@@ -1065,15 +1101,23 @@
 
     if (playerContainer) playerContainer.style.display = 'block';
     if (rawPlayer) {
-      rawPlayer.src = res.input_file === 'sample_voice_44k.wav'
+      rawPlayer.src = res.raw_audio_url || (res.input_file === 'sample_voice_44k.wav'
         ? '/api/audio/sample'
-        : `/api/audio/upload/${res.input_file}`;
+        : `/api/audio/upload/${res.input_file}`);
+      rawPlayer.load();
     }
     if (cleanPlayer) {
-      cleanPlayer.src = `/api/audio/output/${res.output_file}`;
+      cleanPlayer.src = res.cleaned_audio_url || `/api/audio/output/${res.output_file}`;
+      cleanPlayer.load();
     }
     if (dlBtn) {
       dlBtn.href = `/api/audio/download/${res.output_file}`;
+    }
+
+    // Mutual pause listener so both players don't play simultaneously
+    if (rawPlayer && cleanPlayer) {
+      rawPlayer.onplay = () => { if (!cleanPlayer.paused) cleanPlayer.pause(); };
+      cleanPlayer.onplay = () => { if (!rawPlayer.paused) rawPlayer.pause(); };
     }
 
     // Render Static Before / After Waveforms
@@ -1086,28 +1130,32 @@
       }
     }, 60);
 
-    // Interactive File A/B Toggle Button
+    // Interactive File A/B Toggle Button (Seamlessly switches audio stream during audition)
     if (baToggleBtn && rawPlayer && cleanPlayer) {
       let fileAuditionMode = 'clean';
       baToggleBtn.onclick = () => {
         if (fileAuditionMode === 'clean') {
-          const t = cleanPlayer.currentTime;
+          const t = cleanPlayer.currentTime || 0;
           const wasPlaying = !cleanPlayer.paused;
           cleanPlayer.pause();
           rawPlayer.currentTime = t;
-          if (wasPlaying) rawPlayer.play();
+          if (wasPlaying) {
+            rawPlayer.play().catch(e => console.log('Autoplay handled:', e));
+          }
           fileAuditionMode = 'raw';
-          baToggleBtn.innerHTML = '<span>⇄</span> Audition: <strong>BEFORE (Raw)</strong>';
+          baToggleBtn.innerHTML = '<span>⇄</span> Audition: <strong>BEFORE (Raw Audio)</strong>';
           baToggleBtn.style.color = '#ff6b6b';
           baToggleBtn.style.borderColor = '#ff6b6b';
         } else {
-          const t = rawPlayer.currentTime;
+          const t = rawPlayer.currentTime || 0;
           const wasPlaying = !rawPlayer.paused;
           rawPlayer.pause();
           cleanPlayer.currentTime = t;
-          if (wasPlaying) cleanPlayer.play();
+          if (wasPlaying) {
+            cleanPlayer.play().catch(e => console.log('Autoplay handled:', e));
+          }
           fileAuditionMode = 'clean';
-          baToggleBtn.innerHTML = '<span>⇄</span> Audition: <strong>AFTER (Cleaned)</strong>';
+          baToggleBtn.innerHTML = '<span>⇄</span> Audition: <strong>AFTER (Cleaned Voice)</strong>';
           baToggleBtn.style.color = '#00f0ff';
           baToggleBtn.style.borderColor = '#00f0ff';
         }
